@@ -1,0 +1,29 @@
+# requirements.txt.example
+#
+# This file documents what dependencies we WOULD use if the stdlib-only
+# constraint were lifted. It is NOT used in the actual implementation.
+#
+# See README.md section "Python Backend: Standard Library Only" for rationale.
+
+# HTTP framework - replaces http.server.SimpleHTTPRequestHandler
+# Provides: better error handling, routing, templates, production-ready server
+flask>=3.0.0
+
+# Date/time parsing - replaces manual string parsing of --since argument
+# Provides: robust parsing of relative dates ("2 weeks ago", "last Tuesday")
+python-dateutil>=2.8.2
+
+# HTTP client library - if backend needs to query external APIs
+# Provides: better error handling, retries, connection pooling
+requests>=2.31.0
+
+# Configuration file support - replaces CLI-only configuration
+# Provides: YAML config files as alternative to command-line arguments
+pyyaml>=6.0
+
+# Enhanced CLI argument parsing - replaces argparse
+# Provides: better validation, type coercion, help text formatting
+click>=8.1.0
+
+# Note: These dependencies would improve developer experience but would
+# break zero-dependency deployment, which is a core design goal.
