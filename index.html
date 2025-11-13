@@ -37,6 +37,7 @@
 
     <script src="/static/vis-timeline-graph2d-8.3.1.min.js"></script>
     <script src="/static/api-client.js"></script>
+    <script src="/static/data-transformer.js"></script>
     <script>
         // Global timeline instance
         let timeline = null;
@@ -76,12 +77,21 @@
             if (typeof vis === 'undefined') {
                 statusDiv.innerHTML += '<br><strong>Error:</strong> vis.js library not loaded';
                 statusDiv.style.backgroundColor = '#ffe8e8';
-            } else {
-                statusDiv.innerHTML += 'vis.js library: ✓ Loaded';
-
-                // Initialize Timeline
-                initializeTimeline();
+                return;
             }
+
+            // Test DataTransformer module
+            if (typeof DataTransformer === 'undefined') {
+                statusDiv.innerHTML += '<br><strong>Error:</strong> DataTransformer module not loaded';
+                statusDiv.style.backgroundColor = '#ffe8e8';
+                return;
+            }
+
+            statusDiv.innerHTML += 'vis.js library: ✓ Loaded<br>';
+            statusDiv.innerHTML += 'DataTransformer: ✓ Loaded';
+
+            // Initialize Timeline
+            initializeTimeline();
         });
 
         /**
