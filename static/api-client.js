@@ -304,6 +304,227 @@ class GitLabAPIClient {
             'Neither groupId nor projectIds found in configuration'
         );
     }
+
+    /**
+     * Make paginated request to GitLab API
+     *
+     * GitLab API uses Link headers for pagination with rel="next" for the next page.
+     * This method follows pagination links until all pages are fetched.
+     *
+     * @param {string} endpoint - API endpoint path (without /api/v4 prefix)
+     * @param {object} params - Query parameters
+     * @returns {Promise<Array>} - Aggregated array of all results from all pages
+     */
+    async _requestPaginated(endpoint, params = {}) {
+        let allResults = [];
+        let currentPage = 1;
+        let hasNextPage = true;
+
+        // Set per_page to 100 if not specified
+        // GitLab API maximum is 100; using smaller values wastes bandwidth and API calls
+        const queryParams = {
+            per_page: 100,
+            ...params
+        };
+
+        while (hasNextPage) {
+            // Add page parameter
+            queryParams.page = currentPage;
+
+            const queryString = new URLSearchParams(queryParams).toString();
+            const fullEndpoint = `${endpoint}${queryString ? '?' + queryString : ''}`;
+
+            // Make request and capture response headers
+            const normalizedEndpoint = fullEndpoint.startsWith('/') ? fullEndpoint : `/${fullEndpoint}`;
+            const url = `${this.apiBaseUrl}${normalizedEndpoint}`;
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.gitlabToken}`
+            };
+
+            let response;
+            try {
+                response = await fetch(url, { headers });
+
+                if (!response.ok) {
+                    await this._handleErrorResponse(response);
+                }
+
+                const pageResults = await response.json();
+                allResults = allResults.concat(pageResults);
+
+                // Check for Link header to determine if there's a next page
+                const linkHeader = response.headers.get('Link');
+                hasNextPage = linkHeader && linkHeader.includes('rel="next"');
+                currentPage++;
+
+            } catch (error) {
+                // Re-throw our custom errors
+                if (error.name === 'GitLabAPIError') {
+                    throw error;
+                }
+
+                // Handle network errors with context
+                const contextError = this._createError(
+                    'NetworkError',
+                    `Network error while connecting to GitLab: ${error.message}`
+                );
+                contextError.url = url;
+                contextError.endpoint = normalizedEndpoint;
+                contextError.originalError = error;
+                throw contextError;
+            }
+        }
+
+        return allResults;
+    }
+
+    /**
+     * Fetch pipelines for given projects within specified time range
+     *
+     * Fetches all pipelines for the provided projects, filtering by the configured
+     * time range (CONFIG.since). Handles pagination automatically to retrieve all
+     * pipelines across multiple pages.
+     *
+     * @param {Array} projects - Array of project objects with id property
+     * @returns {Promise<Array>} - Array of pipeline objects with metadata:
+     *   [{
+     *     id: number,
+     *     project_id: number,
+     *     status: string,
+     *     ref: string,
+     *     created_at: string,
+     *     updated_at: string,
+     *     started_at: string|null,
+     *     finished_at: string|null,
+     *     duration: number|null,
+     *     web_url: string,
+     *     user: {id, username, name}
+     *   }]
+     * @throws {Error} - If all projects fail to fetch pipelines
+     */
+    async fetchPipelines(projects) {
+        if (!Array.isArray(projects) || projects.length === 0) {
+            throw this._createError(
+                'ConfigurationError',
+                'Projects array is empty or invalid'
+            );
+        }
+
+        // Validate projects have id property
+        for (const project of projects) {
+            if (!project.id) {
+                throw this._createError(
+                    'ConfigurationError',
+                    'Project object missing required "id" property'
+                );
+            }
+        }
+
+        // Parse CONFIG.since to ISO 8601 format for updated_after parameter
+        const updatedAfter = this._parseTimeRange(CONFIG.since);
+
+        // Fetch pipelines for all projects using allSettled for partial success
+        const pipelinePromises = projects.map(project =>
+            this._requestPaginated(
+                `/projects/${project.id}/pipelines`,
+                {
+                    updated_after: updatedAfter,
+                    order_by: 'updated_at',
+                    sort: 'desc'
+                }
+            ).then(pipelines => ({
+                projectId: project.id,
+                success: true,
+                pipelines: pipelines.map(p => ({ ...p, project_id: project.id }))
+            }))
+            .catch(error => ({
+                projectId: project.id,
+                success: false,
+                error: error
+            }))
+        );
+
+        const results = await Promise.all(pipelinePromises);
+
+        // Separate successful and failed fetches
+        const succeeded = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+
+        // Log warnings for failed projects
+        if (failed.length > 0) {
+            console.warn(`Failed to fetch pipelines for ${failed.length} of ${projects.length} projects:`,
+                failed.map(f => `${f.projectId}: ${f.error.message}`));
+        }
+
+        // Fail if ALL projects failed
+        if (succeeded.length === 0) {
+            throw this._createError(
+                'PipelineFetchError',
+                `Failed to fetch pipelines for all ${projects.length} configured projects`
+            );
+        }
+
+        // Flatten and return all successful pipeline results
+        return succeeded.flatMap(s => s.pipelines);
+    }
+
+    /**
+     * Parse time range string to ISO 8601 timestamp
+     *
+     * Supports relative time strings like "2 days ago", "1 week ago"
+     * and absolute dates like "2025-01-10"
+     *
+     * @param {string} timeRange - Time range string
+     * @returns {string} - ISO 8601 timestamp
+     * @throws {Error} - If timeRange is invalid or unsupported format
+     */
+    _parseTimeRange(timeRange) {
+        // Validate input exists
+        if (!timeRange) {
+            throw this._createError(
+                'ConfigurationError',
+                'CONFIG.since is not set. Provide a time range like "2 days ago" or "2025-01-10"'
+            );
+        }
+
+        // Try parsing as absolute date first
+        const absoluteDate = new Date(timeRange);
+        if (!isNaN(absoluteDate.getTime())) {
+            return absoluteDate.toISOString();
+        }
+
+        // Parse relative time strings
+        const match = timeRange.match(/^(\d+)\s+(day|days|week|weeks|hour|hours|minute|minutes)\s+ago$/i);
+        if (match) {
+            const value = parseInt(match[1], 10);
+            const unit = match[2].toLowerCase();
+
+            const now = new Date();
+            const msPerUnit = {
+                minute: 60 * 1000,
+                minutes: 60 * 1000,
+                hour: 60 * 60 * 1000,
+                hours: 60 * 60 * 1000,
+                day: 24 * 60 * 60 * 1000,
+                days: 24 * 60 * 60 * 1000,
+                week: 7 * 24 * 60 * 60 * 1000,
+                weeks: 7 * 24 * 60 * 60 * 1000
+            };
+
+            const milliseconds = value * msPerUnit[unit];
+            const targetDate = new Date(now.getTime() - milliseconds);
+            return targetDate.toISOString();
+        }
+
+        // Fail explicitly on invalid format
+        throw this._createError(
+            'InvalidTimeRangeError',
+            `Invalid time range format: "${timeRange}". ` +
+            `Use relative format like "2 days ago" or absolute date like "2025-01-10"`
+        );
+    }
 }
 
 // Export for use in other modules

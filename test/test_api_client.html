@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Client Tests</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .pass {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .fail {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .summary {
+            font-weight: bold;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e8f4f8;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GitLab API Client Tests</h1>
+    <div id="results"></div>
+
+    <script>
+        // Mock CONFIG object
+        const CONFIG = {
+            gitlabToken: 'test-token-123',
+            gitlabUrl: 'https://gitlab.com',
+            since: '2 days ago',
+            projectIds: ['100', '200']
+        };
+    </script>
+    <script src="../static/api-client.js"></script>
+    <script>
+        // Simple test framework
+        const results = [];
+        let totalTests = 0;
+        let passedTests = 0;
+
+        function assert(condition, message) {
+            totalTests++;
+            if (condition) {
+                passedTests++;
+                results.push({ pass: true, message });
+            } else {
+                results.push({ pass: false, message });
+            }
+        }
+
+        function assertEqual(actual, expected, message) {
+            const pass = JSON.stringify(actual) === JSON.stringify(expected);
+            totalTests++;
+            if (pass) {
+                passedTests++;
+                results.push({ pass: true, message });
+            } else {
+                results.push({
+                    pass: false,
+                    message: `${message}\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`
+                });
+            }
+        }
+
+        function assertThrows(fn, message) {
+            totalTests++;
+            try {
+                fn();
+                results.push({ pass: false, message: `${message} (did not throw)` });
+            } catch (e) {
+                passedTests++;
+                results.push({ pass: true, message });
+            }
+        }
+
+        async function runTests() {
+            const client = new GitLabAPIClient();
+
+            // Test 1: _parseTimeRange with relative time
+            console.log('Test 1: Parse relative time - 2 days ago');
+            const twoDaysAgo = client._parseTimeRange('2 days ago');
+            const expectedDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+            const parsedDate = new Date(twoDaysAgo);
+            const diff = Math.abs(parsedDate.getTime() - expectedDate.getTime());
+            assert(diff < 5000, 'Test 1: Parse "2 days ago" (within 5 seconds)');
+
+            // Test 2: _parseTimeRange with weeks
+            console.log('Test 2: Parse relative time - 1 week ago');
+            const oneWeekAgo = client._parseTimeRange('1 week ago');
+            const expectedWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const parsedWeek = new Date(oneWeekAgo);
+            const weekDiff = Math.abs(parsedWeek.getTime() - expectedWeek.getTime());
+            assert(weekDiff < 5000, 'Test 2: Parse "1 week ago" (within 5 seconds)');
+
+            // Test 3: _parseTimeRange with absolute date
+            console.log('Test 3: Parse absolute date');
+            const absoluteDate = client._parseTimeRange('2025-01-10');
+            assert(absoluteDate.startsWith('2025-01-10'), 'Test 3: Parse absolute date "2025-01-10"');
+
+            // Test 4: _parseTimeRange with invalid input (defaults to 7 days ago)
+            console.log('Test 4: Parse invalid time range');
+            const invalidTime = client._parseTimeRange('invalid time');
+            const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const parsedInvalid = new Date(invalidTime);
+            const invalidDiff = Math.abs(parsedInvalid.getTime() - sevenDaysAgo.getTime());
+            assert(invalidDiff < 5000, 'Test 4: Invalid time defaults to 7 days ago');
+
+            // Test 5: fetchPipelines with empty projects array
+            console.log('Test 5: fetchPipelines with empty projects array');
+            try {
+                await client.fetchPipelines([]);
+                results.push({ pass: false, message: 'Test 5: Should throw on empty projects array' });
+                totalTests++;
+            } catch (e) {
+                assert(e.errorType === 'ConfigurationError', 'Test 5: Throws ConfigurationError on empty projects');
+            }
+
+            // Test 6: Mock fetch for pagination test
+            console.log('Test 6: Pagination handling');
+            const originalFetch = window.fetch;
+            let fetchCallCount = 0;
+
+            // Mock fetch to simulate 3 pages of results
+            window.fetch = async (url, options) => {
+                fetchCallCount++;
+
+                // Simulate 3 pages of 100 pipelines each, then 50 on last page
+                let pageData = [];
+                let linkHeader = '';
+
+                if (url.includes('page=1')) {
+                    pageData = Array(100).fill(null).map((_, i) => ({ id: i + 1, status: 'success' }));
+                    linkHeader = '<url>; rel="next"';
+                } else if (url.includes('page=2')) {
+                    pageData = Array(100).fill(null).map((_, i) => ({ id: i + 101, status: 'success' }));
+                    linkHeader = '<url>; rel="next"';
+                } else if (url.includes('page=3')) {
+                    pageData = Array(50).fill(null).map((_, i) => ({ id: i + 201, status: 'success' }));
+                    linkHeader = ''; // No next page
+                }
+
+                return {
+                    ok: true,
+                    json: async () => pageData,
+                    headers: {
+                        get: (name) => {
+                            if (name === 'Link') return linkHeader;
+                            return null;
+                        }
+                    }
+                };
+            };
+
+            const mockProjects = [{ id: 123, name: 'test-project' }];
+            const pipelines = await client.fetchPipelines(mockProjects);
+
+            assert(pipelines.length === 250, `Test 6: Should fetch 250 pipelines across 3 pages (got ${pipelines.length})`);
+            assert(fetchCallCount === 3, `Test 6: Should make 3 fetch calls (made ${fetchCallCount})`);
+
+            // Restore original fetch
+            window.fetch = originalFetch;
+
+            // Display results
+            displayResults();
+        }
+
+        function displayResults() {
+            const resultsDiv = document.getElementById('results');
+            let html = '';
+
+            results.forEach((result, index) => {
+                const className = result.pass ? 'pass' : 'fail';
+                const status = result.pass ? 'PASS' : 'FAIL';
+                html += `<div class="test-result ${className}">[${status}] ${result.message}</div>`;
+            });
+
+            html += `<div class="summary">Summary: ${passedTests}/${totalTests} tests passed</div>`;
+            resultsDiv.innerHTML = html;
+
+            if (passedTests === totalTests) {
+                console.log('All tests passed!');
+            } else {
+                console.error(`${totalTests - passedTests} tests failed`);
+            }
+        }
+
+        // Run tests when page loads
+        runTests().catch(error => {
+            document.getElementById('results').innerHTML =
+                `<div class="test-result fail">Test execution failed: ${error.message}</div>`;
+        });
+    </script>
+</body>
+</html>
