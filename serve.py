@@ -150,6 +150,12 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
                 with open(index_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
 
+                # Validate HTML template has injection point
+                if '</head>' not in html_content:
+                    print("ERROR: index.html has no closing </head> tag", file=sys.stderr)
+                    self.send_error(500, "Invalid HTML template - missing </head>")
+                    return
+
                 # Inject config as a <script> tag before closing </head>
                 config_script = f'    <script>\n{self.config_js}\n    </script>\n'
                 html_with_config = html_content.replace('</head>', f'{config_script}</head>')

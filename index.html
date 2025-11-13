@@ -37,7 +37,10 @@
 
     <script src="/static/vis-timeline-graph2d-8.3.1.min.js"></script>
     <script>
-        // Display configuration status
+        // Global timeline instance
+        let timeline = null;
+
+        // Display configuration status and initialize timeline
         document.addEventListener('DOMContentLoaded', function() {
             const statusDiv = document.getElementById('status');
 
@@ -66,8 +69,80 @@
                 statusDiv.style.backgroundColor = '#ffe8e8';
             } else {
                 statusDiv.innerHTML += '<br>vis.js library: ✓ Loaded';
+
+                // Initialize Timeline
+                initializeTimeline();
             }
         });
+
+        /**
+         * Initialize vis.js Timeline component with GANTT chart configuration
+         */
+        function initializeTimeline() {
+            const container = document.getElementById('visualization');
+
+            // Cleanup if timeline already exists (defensive, idempotent)
+            if (timeline) {
+                timeline.destroy();
+            }
+
+            // Create empty datasets for now (will be populated by API data)
+            const items = new vis.DataSet([]);
+            const groups = new vis.DataSet([]);
+
+            // Timeline options for GANTT chart style
+            // Show dates in day/month context, times in HH:mm format
+            // Helps operators quickly identify when pipelines ran
+            const options = {
+                // Stack items within groups
+                stack: true,
+
+                // Show current time line
+                showCurrentTime: true,
+
+                // Time axis format
+                format: {
+                    minorLabels: {
+                        minute: 'HH:mm',
+                        hour: 'HH:mm'
+                    },
+                    majorLabels: {
+                        minute: 'ddd D MMMM',
+                        hour: 'ddd D MMMM',
+                        day: 'MMMM YYYY'
+                    }
+                },
+
+                // Orientation
+                orientation: 'top',
+
+                // Enable grouping
+                groupOrder: 'content',
+
+                // Enable dragging and zooming
+                zoomable: true,
+                moveable: true,
+
+                // Tooltip
+                tooltip: {
+                    followMouse: true,
+                    overflowMethod: 'cap'
+                },
+
+                // Margins
+                margin: {
+                    item: {
+                        horizontal: 10,
+                        vertical: 5
+                    }
+                }
+            };
+
+            // Create Timeline instance
+            timeline = new vis.Timeline(container, items, groups, options);
+
+            console.log('Timeline initialized successfully');
+        }
     </script>
 </body>
 </html>
