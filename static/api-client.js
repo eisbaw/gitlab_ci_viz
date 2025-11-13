@@ -34,14 +34,15 @@ class GitLabAPIClient {
     }
 
     /**
-     * Make authenticated request to GitLab API
+     * Make authenticated request to GitLab API with timeout
      *
      * @param {string} endpoint - API endpoint path (without /api/v4 prefix)
      * @param {object} options - Fetch API options
+     * @param {number} timeout - Request timeout in milliseconds (default: 30000)
      * @returns {Promise<object>} - Parsed JSON response
      * @throws {Error} - With user-friendly error message
      */
-    async request(endpoint, options = {}) {
+    async request(endpoint, options = {}, timeout = 30000) {
         // Ensure endpoint starts with /
         const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `${this.apiBaseUrl}${normalizedEndpoint}`;
@@ -54,11 +55,24 @@ class GitLabAPIClient {
         // Always set Authorization header (prevent override)
         headers['Authorization'] = `Bearer ${this.gitlabToken}`;
 
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(this._createError(
+                    'TimeoutError',
+                    `Request timed out after ${timeout / 1000} seconds. GitLab may be slow or unreachable.`
+                ));
+            }, timeout);
+        });
+
         try {
-            const response = await fetch(url, {
+            const fetchPromise = fetch(url, {
                 ...options,
                 headers
             });
+
+            // Race between fetch and timeout
+            const response = await Promise.race([fetchPromise, timeoutPromise]);
 
             // Handle HTTP errors
             if (!response.ok) {
@@ -99,7 +113,8 @@ class GitLabAPIClient {
             const body = await response.json();
             errorDetails = body.message || body.error || '';
         } catch (e) {
-            // Response body not JSON, ignore
+            // Response body not JSON or parsing failed
+            console.debug('Failed to parse error response body:', e.message);
         }
 
         // 401 Unauthorized - Invalid token
@@ -306,16 +321,17 @@ class GitLabAPIClient {
     }
 
     /**
-     * Make paginated request to GitLab API
+     * Make paginated request to GitLab API with timeout
      *
      * GitLab API uses Link headers for pagination with rel="next" for the next page.
      * This method follows pagination links until all pages are fetched.
      *
      * @param {string} endpoint - API endpoint path (without /api/v4 prefix)
      * @param {object} params - Query parameters
+     * @param {number} timeout - Request timeout in milliseconds (default: 30000)
      * @returns {Promise<Array>} - Aggregated array of all results from all pages
      */
-    async _requestPaginated(endpoint, params = {}) {
+    async _requestPaginated(endpoint, params = {}, timeout = 30000) {
         let allResults = [];
         let currentPage = 1;
         let hasNextPage = true;
@@ -343,9 +359,22 @@ class GitLabAPIClient {
                 'Authorization': `Bearer ${this.gitlabToken}`
             };
 
+            // Create timeout promise
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(this._createError(
+                        'TimeoutError',
+                        `Paginated request timed out after ${timeout / 1000} seconds on page ${currentPage}. GitLab may be slow or unreachable.`
+                    ));
+                }, timeout);
+            });
+
             let response;
             try {
-                response = await fetch(url, { headers });
+                const fetchPromise = fetch(url, { headers });
+
+                // Race between fetch and timeout
+                response = await Promise.race([fetchPromise, timeoutPromise]);
 
                 if (!response.ok) {
                     await this._handleErrorResponse(response);

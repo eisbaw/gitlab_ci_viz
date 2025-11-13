@@ -24,8 +24,53 @@
             background-color: #e8f4f8;
             border-radius: 4px;
         }
+        #status.loading {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+        #status.success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        #status.error {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+        #status.warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
         h1 {
             margin-top: 0;
+        }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(0,0,0,.1);
+            border-radius: 50%;
+            border-top-color: #007bff;
+            animation: spin 1s ease-in-out infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .error-details {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: rgba(255,255,255,0.5);
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .resolution-steps {
+            margin-top: 10px;
+            padding-left: 20px;
+        }
+        .resolution-steps li {
+            margin: 5px 0;
         }
 
         /* Status color palette */
@@ -121,7 +166,39 @@
         // Global API client instance
         let apiClient = null;
 
-        // Display configuration status and initialize timeline
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        /**
+         * Update status display with appropriate styling
+         */
+        function updateStatus(message, type = 'info', details = null) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = type;
+
+            let html = message;
+            if (details) {
+                html += `<div class="error-details">${escapeHTML(details)}</div>`;
+            }
+            statusDiv.innerHTML = html;
+        }
+
+        /**
+         * Show loading indicator
+         */
+        function showLoading(message) {
+            updateStatus(`<span class="spinner"></span>${message}`, 'loading');
+        }
+
+        /**
+         * Display configuration status and initialize timeline
+         */
         document.addEventListener('DOMContentLoaded', function() {
             const statusDiv = document.getElementById('status');
 
@@ -141,30 +218,30 @@
 
                 statusHtml += `Token: ✓ Present<br>`;
                 statusHtml += `API Client: ✓ Initialized<br>`;
-                statusDiv.innerHTML = statusHtml;
-                statusDiv.style.backgroundColor = '#e8f8e8';
+                updateStatus(statusHtml, 'success');
             } catch (error) {
-                statusDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
-                statusDiv.style.backgroundColor = '#ffe8e8';
+                const errorHtml = `<strong>Configuration Error</strong><br>${error.message}`;
+                updateStatus(errorHtml, 'error');
                 return; // Stop initialization if API client fails
             }
 
             // Test vis.js library
             if (typeof vis === 'undefined') {
-                statusDiv.innerHTML += '<br><strong>Error:</strong> vis.js library not loaded';
-                statusDiv.style.backgroundColor = '#ffe8e8';
+                const errorHtml = '<strong>Library Error</strong><br>vis.js library failed to load';
+                updateStatus(errorHtml, 'error', 'Check browser console for details');
                 return;
             }
 
             // Test DataTransformer module
             if (typeof DataTransformer === 'undefined') {
-                statusDiv.innerHTML += '<br><strong>Error:</strong> DataTransformer module not loaded';
-                statusDiv.style.backgroundColor = '#ffe8e8';
+                const errorHtml = '<strong>Library Error</strong><br>DataTransformer module failed to load';
+                updateStatus(errorHtml, 'error', 'Check browser console for details');
                 return;
             }
 
-            statusDiv.innerHTML += 'vis.js library: ✓ Loaded<br>';
-            statusDiv.innerHTML += 'DataTransformer: ✓ Loaded';
+            const statusDiv2 = document.getElementById('status');
+            statusDiv2.innerHTML += 'vis.js library: ✓ Loaded<br>';
+            statusDiv2.innerHTML += 'DataTransformer: ✓ Loaded';
 
             // Initialize Timeline
             initializeTimeline();
@@ -243,6 +320,52 @@
         }
 
         /**
+         * Format error with helpful resolution steps
+         */
+        function formatError(error) {
+            let message = `<strong>Error:</strong> ${escapeHTML(error.message)}`;
+            let resolutionSteps = [];
+
+            // Add specific resolution steps based on error type
+            if (error.errorType === 'InvalidTokenError' || error.errorType === 'ExpiredTokenError') {
+                resolutionSteps.push('Run <code>glab auth login</code> to authenticate');
+                resolutionSteps.push('Restart the server after re-authenticating');
+            } else if (error.errorType === 'TimeoutError') {
+                resolutionSteps.push('Check if GitLab instance is accessible and responding');
+                resolutionSteps.push('Verify network connectivity and firewall settings');
+                resolutionSteps.push('GitLab may be experiencing high load - try again later');
+                resolutionSteps.push('Consider reducing the time range to fetch less data');
+            } else if (error.errorType === 'NetworkError' || error.name === 'TypeError') {
+                // TypeError often indicates CORS or network issues
+                resolutionSteps.push('Check if GitLab instance is accessible');
+                resolutionSteps.push('If using self-hosted GitLab, check CORS configuration');
+                resolutionSteps.push('Verify network connectivity');
+                if (error.message && error.message.includes('Failed to fetch')) {
+                    message += '<br><br><strong>Possible CORS Issue:</strong> GitLab may be blocking requests from localhost.';
+                    resolutionSteps.push('For self-hosted GitLab, add localhost to CORS allowed origins');
+                    resolutionSteps.push('See: <a href="https://docs.gitlab.com/ee/api/#cors" target="_blank">GitLab CORS documentation</a>');
+                }
+            } else if (error.errorType === 'RateLimitError') {
+                resolutionSteps.push('Wait a few minutes before retrying');
+                resolutionSteps.push('Consider increasing time range to reduce API calls');
+            } else if (error.errorType === 'ConfigurationError') {
+                resolutionSteps.push('Check command-line arguments passed to serve.py');
+                resolutionSteps.push('Ensure group ID or project IDs are valid');
+                resolutionSteps.push('Verify time range format (e.g., "2 days ago" or "2025-01-10")');
+            }
+
+            if (resolutionSteps.length > 0) {
+                message += '<div class="resolution-steps"><strong>Resolution steps:</strong><ol>';
+                resolutionSteps.forEach(step => {
+                    message += `<li>${step}</li>`;
+                });
+                message += '</ol></div>';
+            }
+
+            return message;
+        }
+
+        /**
          * Fetch GitLab data and render on timeline
          *
          * Orchestrates the complete data flow:
@@ -253,38 +376,35 @@
          * 5. Update timeline with transformed data
          */
         async function fetchAndRender() {
-            const statusDiv = document.getElementById('status');
-
             try {
-                // Update status
-                statusDiv.innerHTML += '<br><br><strong>Fetching data from GitLab...</strong>';
-
                 // Step 1: Fetch projects
-                statusDiv.innerHTML += '<br>Fetching projects...';
+                showLoading('Fetching projects from GitLab...');
                 const projects = await apiClient.fetchProjects();
-                statusDiv.innerHTML += ` ✓ (${projects.length} projects)`;
 
                 // Create project map for quick lookup
                 const projectMap = new Map();
                 projects.forEach(p => projectMap.set(p.id, p));
 
                 // Step 2: Fetch pipelines
-                statusDiv.innerHTML += '<br>Fetching pipelines...';
+                showLoading(`Fetching pipelines from ${projects.length} projects...`);
                 const pipelines = await apiClient.fetchPipelines(projects);
-                statusDiv.innerHTML += ` ✓ (${pipelines.length} pipelines)`;
 
                 if (pipelines.length === 0) {
-                    statusDiv.innerHTML += '<br><strong>No pipelines found for the specified time range.</strong>';
+                    updateStatus(
+                        '<strong>No pipelines found</strong><br>' +
+                        `No pipelines found in the specified time range (since ${CONFIG.since}).<br>` +
+                        'Try adjusting the time range or check if pipelines exist in the configured projects.',
+                        'warning'
+                    );
                     return;
                 }
 
                 // Step 3: Fetch jobs
-                statusDiv.innerHTML += '<br>Fetching jobs...';
+                showLoading(`Fetching jobs from ${pipelines.length} pipelines...`);
                 const jobs = await apiClient.fetchJobs(pipelines);
-                statusDiv.innerHTML += ` ✓ (${jobs.length} jobs)`;
 
                 // Step 4: Transform to vis.js format
-                statusDiv.innerHTML += '<br>Transforming data...';
+                showLoading('Transforming data for visualization...');
                 const transformed = DataTransformer.transform(pipelines, jobs);
 
                 // Step 5: Enrich pipeline items with project names
@@ -320,20 +440,27 @@
                     return item;
                 });
 
-                statusDiv.innerHTML += ' ✓';
-
                 // Step 6: Update timeline
-                statusDiv.innerHTML += '<br>Rendering timeline...';
+                showLoading('Rendering timeline...');
                 timeline.setGroups(transformed.groups);
                 timeline.setItems(enrichedItems);
-                statusDiv.innerHTML += ' ✓';
 
-                statusDiv.innerHTML += '<br><br><strong style="color: green;">Data loaded successfully!</strong>';
+                // Success message
+                const successMessage =
+                    `<strong>Data loaded successfully</strong><br>` +
+                    `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs<br>` +
+                    `Time range: ${CONFIG.since}`;
+                updateStatus(successMessage, 'success');
 
             } catch (error) {
                 console.error('Error fetching and rendering data:', error);
-                statusDiv.innerHTML += `<br><br><strong style="color: red;">Error: ${error.message}</strong>`;
-                statusDiv.style.backgroundColor = '#ffe8e8';
+                const errorMessage = formatError(error);
+                updateStatus(errorMessage, 'error');
+
+                // Log full error details for debugging
+                if (error.originalError) {
+                    console.error('Original error:', error.originalError);
+                }
             }
         }
     </script>
