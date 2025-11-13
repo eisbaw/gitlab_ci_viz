@@ -45,6 +45,22 @@ class User {
  */
 class Pipeline {
     constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, user) {
+        // Validate required fields
+        if (!id || !projectId || !status || !createdAt) {
+            throw new Error(`Invalid pipeline data: missing required fields (id=${id}, projectId=${projectId}, status=${status}, createdAt=${createdAt})`);
+        }
+
+        // Validate timestamp format (fail fast on malformed data)
+        if (!this.isValidTimestamp(createdAt)) {
+            throw new Error(`Invalid createdAt timestamp: ${createdAt} for Pipeline ${id}`);
+        }
+        if (startedAt && !this.isValidTimestamp(startedAt)) {
+            throw new Error(`Invalid startedAt timestamp: ${startedAt} for Pipeline ${id}`);
+        }
+        if (finishedAt && !this.isValidTimestamp(finishedAt)) {
+            throw new Error(`Invalid finishedAt timestamp: ${finishedAt} for Pipeline ${id}`);
+        }
+
         this.id = id;
         this.projectId = projectId;
         this.status = status;
@@ -55,6 +71,16 @@ class Pipeline {
         this.webUrl = webUrl;
         this.user = user;
         this.jobs = [];
+    }
+
+    /**
+     * Validate timestamp format
+     * @param {string} ts - ISO 8601 timestamp string
+     * @returns {boolean} - true if valid or null/undefined, false if invalid
+     */
+    isValidTimestamp(ts) {
+        if (!ts) return true;  // null/undefined is acceptable
+        return !isNaN(new Date(ts).getTime());
     }
 
     addJob(job) {
@@ -73,6 +99,10 @@ class Pipeline {
      * Get effective end time for timeline
      * For running pipelines, uses current time
      * For pending pipelines, uses created_at + small offset for visibility
+     *
+     * Note: Pending pipelines are shown with a 5-minute bar to ensure visibility
+     * on the timeline without cluttering it with long-pending items. This is a
+     * display concern - the actual pipeline state is preserved.
      */
     getEndTime() {
         if (this.finishedAt) {
@@ -84,13 +114,10 @@ class Pipeline {
             return new Date().toISOString();
         }
 
-        // Pending pipeline: show small bar for visibility
+        // Pending pipeline: show small bar for visibility (5 minutes)
+        // 5 minutes is enough to see pending items without clutter
         const created = new Date(this.createdAt);
-        if (isNaN(created.getTime())) {
-            throw new Error(`Invalid createdAt timestamp: ${this.createdAt} for Pipeline ${this.id}`);
-        }
-
-        const PENDING_VISIBILITY_MS = 5 * 60 * 1000;  // 5 minutes
+        const PENDING_VISIBILITY_MS = 5 * 60 * 1000;
         const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
         return endTime.toISOString();
     }
@@ -109,6 +136,22 @@ class Pipeline {
  */
 class Job {
     constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId) {
+        // Validate required fields
+        if (!id || !name || !status || !createdAt || !pipelineId) {
+            throw new Error(`Invalid job data: missing required fields (id=${id}, name=${name}, status=${status}, createdAt=${createdAt}, pipelineId=${pipelineId})`);
+        }
+
+        // Validate timestamp format (fail fast on malformed data)
+        if (!this.isValidTimestamp(createdAt)) {
+            throw new Error(`Invalid createdAt timestamp: ${createdAt} for Job ${id} (${name})`);
+        }
+        if (startedAt && !this.isValidTimestamp(startedAt)) {
+            throw new Error(`Invalid startedAt timestamp: ${startedAt} for Job ${id} (${name})`);
+        }
+        if (finishedAt && !this.isValidTimestamp(finishedAt)) {
+            throw new Error(`Invalid finishedAt timestamp: ${finishedAt} for Job ${id} (${name})`);
+        }
+
         this.id = id;
         this.name = name;
         this.stage = stage;
@@ -119,6 +162,16 @@ class Job {
         this.duration = duration;
         this.webUrl = webUrl;
         this.pipelineId = pipelineId;
+    }
+
+    /**
+     * Validate timestamp format
+     * @param {string} ts - ISO 8601 timestamp string
+     * @returns {boolean} - true if valid or null/undefined, false if invalid
+     */
+    isValidTimestamp(ts) {
+        if (!ts) return true;  // null/undefined is acceptable
+        return !isNaN(new Date(ts).getTime());
     }
 
     /**
@@ -133,6 +186,10 @@ class Job {
      * Get effective end time for timeline
      * For running jobs, uses current time
      * For pending jobs, uses created_at + small offset for visibility
+     *
+     * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
+     * since jobs are typically smaller units that start quickly. This helps
+     * distinguish pending jobs from pending pipelines visually.
      */
     getEndTime() {
         if (this.finishedAt) {
@@ -144,13 +201,10 @@ class Job {
             return new Date().toISOString();
         }
 
-        // Pending job: show small bar for visibility
+        // Pending job: show small bar for visibility (2 minutes)
+        // Shorter than pipelines (5 min) since jobs typically start quickly
         const created = new Date(this.createdAt);
-        if (isNaN(created.getTime())) {
-            throw new Error(`Invalid createdAt timestamp: ${this.createdAt} for Job ${this.id} (${this.name})`);
-        }
-
-        const PENDING_VISIBILITY_MS = 2 * 60 * 1000;  // 2 minutes
+        const PENDING_VISIBILITY_MS = 2 * 60 * 1000;
         const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
         return endTime.toISOString();
     }
@@ -334,17 +388,23 @@ class DataTransformer {
      * @param {Array} pipelines - Array of pipeline objects from GitLab API
      * @param {Array} jobs - Array of job objects from GitLab API
      * @returns {Object} - Object with groups and items arrays for vis.js Timeline
+     * @throws {Error} - If no users/pipelines found (indicates API issue or wrong time range)
      */
     static transform(pipelines, jobs) {
         console.log(`Transforming ${pipelines.length} pipelines and ${jobs.length} jobs`);
+
+        // Validate input
+        if (!Array.isArray(pipelines) || pipelines.length === 0) {
+            throw new Error('No pipelines to transform - check if GitLab API returned data for the specified time range and projects');
+        }
 
         // Step 1: Transform to domain model
         const users = this.transformToDomainModel(pipelines, jobs);
         console.log(`Grouped into ${users.length} users with ${users.reduce((sum, u) => sum + u.pipelines.length, 0)} pipelines`);
 
-        // Validate domain model
+        // Validate domain model (fail fast if transformation produced no users)
         if (!Array.isArray(users) || users.length === 0) {
-            console.warn('No users found in transformed data - timeline will be empty');
+            throw new Error('Transformation produced no users - this indicates a data integrity issue');
         }
 
         // Step 2: Transform to vis.js format

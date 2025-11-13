@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Transformer Tests - User-Centric Grouping</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            margin: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #4ec9b0;
+        }
+        .test-suite {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #252526;
+            border-left: 4px solid #007acc;
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #1e1e1e;
+        }
+        .pass {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+        .fail {
+            color: #f48771;
+            font-weight: bold;
+        }
+        .test-title {
+            color: #dcdcaa;
+            font-weight: bold;
+        }
+        .error {
+            color: #f48771;
+            background-color: #3f1f1f;
+            padding: 5px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        pre {
+            background-color: #2d2d2d;
+            padding: 10px;
+            overflow-x: auto;
+            border-radius: 3px;
+        }
+        .summary {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #264f78;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Data Transformer Tests - User-Centric Grouping (Task-013)</h1>
+    <div id="results"></div>
+
+    <script src="../static/data-transformer.js"></script>
+    <script>
+        // Test framework
+        class TestRunner {
+            constructor() {
+                this.tests = [];
+                this.passed = 0;
+                this.failed = 0;
+            }
+
+            describe(suiteName, testFn) {
+                const suite = {
+                    name: suiteName,
+                    tests: []
+                };
+                this.currentSuite = suite;
+                testFn();
+                this.tests.push(suite);
+            }
+
+            it(testName, testFn) {
+                const test = {
+                    name: testName,
+                    passed: false,
+                    error: null
+                };
+
+                try {
+                    testFn();
+                    test.passed = true;
+                    this.passed++;
+                } catch (error) {
+                    test.passed = false;
+                    test.error = error.message;
+                    this.failed++;
+                }
+
+                this.currentSuite.tests.push(test);
+            }
+
+            assert(condition, message) {
+                if (!condition) {
+                    throw new Error(message || 'Assertion failed');
+                }
+            }
+
+            assertEqual(actual, expected, message) {
+                if (actual !== expected) {
+                    throw new Error(
+                        message || `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+                    );
+                }
+            }
+
+            assertArrayLength(array, length, message) {
+                if (!Array.isArray(array)) {
+                    throw new Error(`Expected array, got ${typeof array}`);
+                }
+                if (array.length !== length) {
+                    throw new Error(
+                        message || `Expected array length ${length}, got ${array.length}`
+                    );
+                }
+            }
+
+            assertHasProperty(obj, prop, message) {
+                if (!(prop in obj)) {
+                    throw new Error(
+                        message || `Expected object to have property '${prop}'`
+                    );
+                }
+            }
+
+            render() {
+                const resultsDiv = document.getElementById('results');
+                let html = '';
+
+                // Summary
+                const total = this.passed + this.failed;
+                const passRate = total > 0 ? ((this.passed / total) * 100).toFixed(1) : 0;
+                const summaryClass = this.failed === 0 ? 'pass' : 'fail';
+
+                html += `<div class="summary ${summaryClass}">`;
+                html += `Total: ${total} | Passed: ${this.passed} | Failed: ${this.failed} | Pass Rate: ${passRate}%`;
+                html += `</div>`;
+
+                // Test suites
+                for (const suite of this.tests) {
+                    html += `<div class="test-suite">`;
+                    html += `<h2>${suite.name}</h2>`;
+
+                    for (const test of suite.tests) {
+                        const statusClass = test.passed ? 'pass' : 'fail';
+                        const statusIcon = test.passed ? '✓' : '✗';
+
+                        html += `<div class="test-case">`;
+                        html += `<span class="${statusClass}">${statusIcon}</span> `;
+                        html += `<span class="test-title">${test.name}</span>`;
+
+                        if (!test.passed && test.error) {
+                            html += `<div class="error">${test.error}</div>`;
+                        }
+
+                        html += `</div>`;
+                    }
+
+                    html += `</div>`;
+                }
+
+                resultsDiv.innerHTML = html;
+            }
+        }
+
+        // Run tests
+        const runner = new TestRunner();
+
+        // Test Suite 1: User Grouping (AC#1, AC#2)
+        runner.describe('User Grouping', () => {
+            runner.it('should group pipelines by user.username', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        duration: 840,
+                        web_url: 'https://gitlab.com/project/pipeline/1',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    },
+                    {
+                        id: 2,
+                        project_id: 10,
+                        status: 'failed',
+                        created_at: '2025-01-13T11:00:00Z',
+                        started_at: '2025-01-13T11:01:00Z',
+                        finished_at: '2025-01-13T11:10:00Z',
+                        duration: 540,
+                        web_url: 'https://gitlab.com/project/pipeline/2',
+                        user: { id: 2, username: 'bob', name: 'Bob Jones' }
+                    },
+                    {
+                        id: 3,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T12:00:00Z',
+                        started_at: '2025-01-13T12:01:00Z',
+                        finished_at: '2025-01-13T12:20:00Z',
+                        duration: 1140,
+                        web_url: 'https://gitlab.com/project/pipeline/3',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, []);
+
+                runner.assertArrayLength(users, 2, 'Expected 2 users');
+                runner.assertEqual(users[0].username, 'alice', 'First user should be alice');
+                runner.assertEqual(users[1].username, 'bob', 'Second user should be bob');
+                runner.assertArrayLength(users[0].pipelines, 2, 'Alice should have 2 pipelines');
+                runner.assertArrayLength(users[1].pipelines, 1, 'Bob should have 1 pipeline');
+            });
+
+            runner.it('should create vis.js groups for each user', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, []);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                // Should have user group + pipeline group
+                runner.assert(visData.groups.length >= 2, 'Should have at least 2 groups');
+
+                const userGroup = visData.groups.find(g => g.id === 'user-1');
+                runner.assert(userGroup !== undefined, 'Should have user-1 group');
+                runner.assertEqual(userGroup.content, 'Alice Smith', 'User group should display name');
+            });
+
+            runner.it('should handle unknown users with fallback label', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: null  // No user info
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, []);
+
+                runner.assertArrayLength(users, 1, 'Should have 1 user');
+                runner.assertEqual(users[0].username, 'unknown', 'Should use "unknown" as fallback');
+                runner.assertEqual(users[0].id, 0, 'Unknown user should have id 0');
+            });
+        });
+
+        // Test Suite 2: Pipeline Nesting (AC#3)
+        runner.describe('Pipeline Nesting', () => {
+            runner.it('should nest pipelines under their respective users', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    },
+                    {
+                        id: 2,
+                        project_id: 10,
+                        status: 'running',
+                        created_at: '2025-01-13T11:00:00Z',
+                        started_at: '2025-01-13T11:01:00Z',
+                        finished_at: null,
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, []);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                const userGroup = visData.groups.find(g => g.id === 'user-1');
+                runner.assert(userGroup !== undefined, 'User group should exist');
+                runner.assertHasProperty(userGroup, 'nestedGroups', 'User group should have nestedGroups');
+                runner.assertArrayLength(userGroup.nestedGroups, 2, 'User should have 2 nested pipeline groups');
+                runner.assert(
+                    userGroup.nestedGroups.includes('pipeline-1'),
+                    'Should include pipeline-1'
+                );
+                runner.assert(
+                    userGroup.nestedGroups.includes('pipeline-2'),
+                    'Should include pipeline-2'
+                );
+            });
+
+            runner.it('should create pipeline groups as children of users', () => {
+                const pipelines = [
+                    {
+                        id: 42,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, []);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                const pipelineGroup = visData.groups.find(g => g.id === 'pipeline-42');
+                runner.assert(pipelineGroup !== undefined, 'Pipeline group should exist');
+                runner.assertEqual(pipelineGroup.content, 'Pipeline #42', 'Pipeline group should have correct label');
+            });
+        });
+
+        // Test Suite 3: Job Nesting (AC#4)
+        runner.describe('Job Nesting', () => {
+            runner.it('should nest jobs under their respective pipelines', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const jobs = [
+                    {
+                        id: 101,
+                        name: 'build',
+                        stage: 'build',
+                        status: 'success',
+                        created_at: '2025-01-13T10:01:00Z',
+                        started_at: '2025-01-13T10:02:00Z',
+                        finished_at: '2025-01-13T10:07:00Z',
+                        pipeline_id: 1,
+                        web_url: 'https://gitlab.com/job/101'
+                    },
+                    {
+                        id: 102,
+                        name: 'test',
+                        stage: 'test',
+                        status: 'success',
+                        created_at: '2025-01-13T10:07:00Z',
+                        started_at: '2025-01-13T10:08:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        pipeline_id: 1,
+                        web_url: 'https://gitlab.com/job/102'
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, jobs);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                const pipelineGroup = visData.groups.find(g => g.id === 'pipeline-1');
+                runner.assert(pipelineGroup !== undefined, 'Pipeline group should exist');
+                runner.assertHasProperty(pipelineGroup, 'nestedGroups', 'Pipeline group should have nestedGroups');
+                runner.assertArrayLength(pipelineGroup.nestedGroups, 2, 'Pipeline should have 2 nested job groups');
+                runner.assert(
+                    pipelineGroup.nestedGroups.includes('job-101'),
+                    'Should include job-101'
+                );
+                runner.assert(
+                    pipelineGroup.nestedGroups.includes('job-102'),
+                    'Should include job-102'
+                );
+            });
+
+            runner.it('should create job groups with stage and name', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const jobs = [
+                    {
+                        id: 101,
+                        name: 'build',
+                        stage: 'build',
+                        status: 'success',
+                        created_at: '2025-01-13T10:01:00Z',
+                        started_at: '2025-01-13T10:02:00Z',
+                        finished_at: '2025-01-13T10:07:00Z',
+                        pipeline_id: 1,
+                        web_url: 'https://gitlab.com/job/101'
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, jobs);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                const jobGroup = visData.groups.find(g => g.id === 'job-101');
+                runner.assert(jobGroup !== undefined, 'Job group should exist');
+                runner.assertEqual(jobGroup.content, 'build: build', 'Job group should show stage: name');
+            });
+
+            runner.it('should fail fast on orphaned jobs', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const jobs = [
+                    {
+                        id: 999,
+                        name: 'orphan',
+                        stage: 'test',
+                        status: 'failed',
+                        created_at: '2025-01-13T10:01:00Z',
+                        started_at: '2025-01-13T10:02:00Z',
+                        finished_at: '2025-01-13T10:07:00Z',
+                        pipeline_id: 999,  // Non-existent pipeline
+                        web_url: 'https://gitlab.com/job/999'
+                    }
+                ];
+
+                let errorThrown = false;
+                try {
+                    DataTransformer.transformToDomainModel(pipelines, jobs);
+                } catch (error) {
+                    errorThrown = true;
+                    runner.assert(
+                        error.message.includes('Job 999') && error.message.includes('pipeline 999'),
+                        'Error should mention orphaned job and pipeline'
+                    );
+                }
+
+                runner.assert(errorThrown, 'Should throw error for orphaned jobs');
+            });
+        });
+
+        // Test Suite 4: Data Validation
+        runner.describe('Data Validation (Fail Fast)', () => {
+            runner.it('should fail fast on invalid pipeline data (missing required fields)', () => {
+                const pipelines = [
+                    {
+                        id: null,  // Missing ID
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                let errorThrown = false;
+                try {
+                    DataTransformer.transformToDomainModel(pipelines, []);
+                } catch (error) {
+                    errorThrown = true;
+                    runner.assert(
+                        error.message.includes('Invalid pipeline data'),
+                        'Error should mention invalid pipeline data'
+                    );
+                }
+
+                runner.assert(errorThrown, 'Should throw error for invalid pipeline data');
+            });
+
+            runner.it('should fail fast on invalid job data (missing required fields)', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                const jobs = [
+                    {
+                        id: 101,
+                        name: null,  // Missing name
+                        stage: 'build',
+                        status: 'success',
+                        created_at: '2025-01-13T10:01:00Z',
+                        pipeline_id: 1
+                    }
+                ];
+
+                let errorThrown = false;
+                try {
+                    DataTransformer.transformToDomainModel(pipelines, jobs);
+                } catch (error) {
+                    errorThrown = true;
+                    runner.assert(
+                        error.message.includes('Invalid job data'),
+                        'Error should mention invalid job data'
+                    );
+                }
+
+                runner.assert(errorThrown, 'Should throw error for invalid job data');
+            });
+
+            runner.it('should fail fast on invalid timestamp in pipeline', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: 'not-a-date',  // Invalid timestamp
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    }
+                ];
+
+                let errorThrown = false;
+                try {
+                    DataTransformer.transformToDomainModel(pipelines, []);
+                } catch (error) {
+                    errorThrown = true;
+                    runner.assert(
+                        error.message.includes('Invalid createdAt timestamp'),
+                        'Error should mention invalid timestamp'
+                    );
+                }
+
+                runner.assert(errorThrown, 'Should throw error for invalid timestamp');
+            });
+
+            runner.it('should fail fast on empty pipeline array', () => {
+                let errorThrown = false;
+                try {
+                    DataTransformer.transform([], []);
+                } catch (error) {
+                    errorThrown = true;
+                    runner.assert(
+                        error.message.includes('No pipelines to transform'),
+                        'Error should mention no pipelines'
+                    );
+                }
+
+                runner.assert(errorThrown, 'Should throw error for empty pipeline array');
+            });
+        });
+
+        // Test Suite 5: Complete Hierarchy
+        runner.describe('Complete Hierarchy Validation', () => {
+            runner.it('should create complete User → Pipeline → Job hierarchy', () => {
+                const pipelines = [
+                    {
+                        id: 1,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T10:00:00Z',
+                        started_at: '2025-01-13T10:01:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        user: { id: 1, username: 'alice', name: 'Alice Smith' }
+                    },
+                    {
+                        id: 2,
+                        project_id: 10,
+                        status: 'success',
+                        created_at: '2025-01-13T11:00:00Z',
+                        started_at: '2025-01-13T11:01:00Z',
+                        finished_at: '2025-01-13T11:10:00Z',
+                        user: { id: 2, username: 'bob', name: 'Bob Jones' }
+                    }
+                ];
+
+                const jobs = [
+                    {
+                        id: 101,
+                        name: 'build',
+                        stage: 'build',
+                        status: 'success',
+                        created_at: '2025-01-13T10:01:00Z',
+                        started_at: '2025-01-13T10:02:00Z',
+                        finished_at: '2025-01-13T10:07:00Z',
+                        pipeline_id: 1
+                    },
+                    {
+                        id: 102,
+                        name: 'test',
+                        stage: 'test',
+                        status: 'success',
+                        created_at: '2025-01-13T10:07:00Z',
+                        started_at: '2025-01-13T10:08:00Z',
+                        finished_at: '2025-01-13T10:15:00Z',
+                        pipeline_id: 1
+                    },
+                    {
+                        id: 201,
+                        name: 'build',
+                        stage: 'build',
+                        status: 'success',
+                        created_at: '2025-01-13T11:01:00Z',
+                        started_at: '2025-01-13T11:02:00Z',
+                        finished_at: '2025-01-13T11:10:00Z',
+                        pipeline_id: 2
+                    }
+                ];
+
+                const users = DataTransformer.transformToDomainModel(pipelines, jobs);
+                const visData = DataTransformer.transformToVisFormat(users);
+
+                // Validate hierarchy structure
+                const userAlice = visData.groups.find(g => g.id === 'user-1');
+                const userBob = visData.groups.find(g => g.id === 'user-2');
+
+                runner.assert(userAlice !== undefined, 'Alice user group should exist');
+                runner.assert(userBob !== undefined, 'Bob user group should exist');
+
+                // Alice's pipeline
+                const pipeline1 = visData.groups.find(g => g.id === 'pipeline-1');
+                runner.assert(pipeline1 !== undefined, 'Pipeline 1 should exist');
+                runner.assert(
+                    userAlice.nestedGroups.includes('pipeline-1'),
+                    'Alice should contain pipeline-1'
+                );
+                runner.assert(
+                    pipeline1.nestedGroups.includes('job-101'),
+                    'Pipeline 1 should contain job-101'
+                );
+                runner.assert(
+                    pipeline1.nestedGroups.includes('job-102'),
+                    'Pipeline 1 should contain job-102'
+                );
+
+                // Bob's pipeline
+                const pipeline2 = visData.groups.find(g => g.id === 'pipeline-2');
+                runner.assert(pipeline2 !== undefined, 'Pipeline 2 should exist');
+                runner.assert(
+                    userBob.nestedGroups.includes('pipeline-2'),
+                    'Bob should contain pipeline-2'
+                );
+                runner.assert(
+                    pipeline2.nestedGroups.includes('job-201'),
+                    'Pipeline 2 should contain job-201'
+                );
+            });
+        });
+
+        // Render results
+        runner.render();
+    </script>
+</body>
+</html>
