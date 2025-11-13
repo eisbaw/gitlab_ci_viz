@@ -13,15 +13,25 @@ Uses only Python standard library (no external dependencies).
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 
+# Configure logging to stderr with timestamp and level
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stderr
+)
+
 
 def get_gitlab_token():
     """Execute 'glab auth token' and return the token."""
+    logging.debug("Executing 'glab auth token' command")
     try:
         result = subprocess.run(
             ['glab', 'auth', 'token'],
@@ -29,22 +39,25 @@ def get_gitlab_token():
             text=True,
             check=True
         )
+        logging.debug("glab auth token command completed with exit code 0")
         token = result.stdout.strip()
         if not token:
-            print("Error: glab auth token returned empty output", file=sys.stderr)
+            logging.error("glab auth token returned empty output")
             sys.exit(1)
+        logging.info("GitLab token obtained successfully")
         return token
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr or e.stdout or "Unknown error"
-        print(f"Error: Failed to get GitLab token (exit {e.returncode}): {error_msg}", file=sys.stderr)
+        logging.error(f"Failed to get GitLab token (exit {e.returncode}): {error_msg}")
         sys.exit(1)
     except FileNotFoundError:
-        print("Error: 'glab' command not found. Please install GitLab CLI.", file=sys.stderr)
+        logging.error("'glab' command not found in PATH. Please install GitLab CLI.")
         sys.exit(1)
 
 
 def parse_arguments():
     """Parse command-line arguments."""
+    logging.debug("Parsing command-line arguments")
     parser = argparse.ArgumentParser(
         description='GitLab CI GANTT Visualizer Server',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -86,29 +99,42 @@ def parse_arguments():
         help='GitLab instance URL (default: https://gitlab.com)'
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Log parsed arguments at INFO level (without sensitive token)
+    logging.info(f"CLI arguments parsed: gitlab_url={args.gitlab_url}, "
+                 f"port={args.port}, since={args.since}")
+    if args.group:
+        logging.info(f"Target: group_id={args.group}")
+    else:
+        logging.info(f"Target: project_ids={args.projects}")
+
+    return args
 
 
 def validate_arguments(args):
     """Validate parsed arguments and fail fast on invalid input."""
+    logging.debug("Validating CLI arguments")
+
     # Validate port range
     if not (1 <= args.port <= 65535):
-        print(f"Error: Invalid port {args.port}. Must be between 1 and 65535.", file=sys.stderr)
+        logging.error(f"Invalid port {args.port}. Must be between 1 and 65535.")
         sys.exit(1)
 
     # Validate GitLab URL
     parsed_url = urlparse(args.gitlab_url)
     if not parsed_url.scheme or not parsed_url.netloc:
-        print(f"Error: Invalid GitLab URL: {args.gitlab_url}", file=sys.stderr)
-        print("URL must include scheme (http/https) and hostname.", file=sys.stderr)
+        logging.error(f"Invalid GitLab URL: {args.gitlab_url}. URL must include scheme (http/https) and hostname.")
         sys.exit(1)
 
     # Validate project IDs if provided
     if args.projects:
         project_ids = [p.strip() for p in args.projects.split(',')]
         if not all(p for p in project_ids):
-            print("Error: Project IDs list contains empty values", file=sys.stderr)
+            logging.error("Project IDs list contains empty values")
             sys.exit(1)
+
+    logging.info("CLI arguments validated successfully")
 
 
 def create_config_js(token, args):
@@ -152,7 +178,7 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
 
                 # Validate HTML template has injection point
                 if '</head>' not in html_content:
-                    print("ERROR: index.html has no closing </head> tag", file=sys.stderr)
+                    logging.error("index.html has no closing </head> tag")
                     self.send_error(500, "Invalid HTML template - missing </head>")
                     return
 
@@ -162,7 +188,7 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
 
                 self.wfile.write(html_with_config.encode('utf-8'))
             except FileNotFoundError as e:
-                print(f"ERROR: index.html not found at {index_path}", file=sys.stderr)
+                logging.error(f"index.html not found at {index_path}")
                 self.send_error(404, f"index.html not found: {e}")
         else:
             # Serve other static files normally
@@ -175,6 +201,8 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
 
 def main():
     """Main entry point."""
+    logging.info("GitLab CI GANTT Visualizer Server starting")
+
     args = parse_arguments()
     validate_arguments(args)
 
@@ -184,15 +212,17 @@ def main():
     print("Token obtained successfully.")
 
     # Generate config JavaScript
+    logging.debug("Generating JavaScript configuration")
     config_js = create_config_js(token, args)
     ConfigInjectingHandler.config_js = config_js
+    logging.info("Configuration prepared successfully")
 
     # Start HTTP server
     server_address = ('', args.port)
     httpd = HTTPServer(server_address, ConfigInjectingHandler)
 
     print(f"\n{'='*60}")
-    print(f"GitLab CI GANTT Visualizer Server")
+    print("GitLab CI GANTT Visualizer Server")
     print(f"{'='*60}")
     print(f"Server running at: http://localhost:{args.port}/")
     print(f"GitLab URL: {args.gitlab_url}")
@@ -201,14 +231,18 @@ def main():
     else:
         print(f"Project IDs: {args.projects}")
     print(f"Time range: since {args.since}")
-    print(f"\nPress Ctrl+C to stop the server")
+    print("\nPress Ctrl+C to stop the server")
     print(f"{'='*60}\n")
+
+    logging.info(f"HTTP server listening on port {args.port}")
 
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
+        logging.info("Shutdown signal received")
         print("\n\nShutting down server...")
         httpd.server_close()
+        logging.info("Server stopped successfully")
         print("Server stopped.")
 
 

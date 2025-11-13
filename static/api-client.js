@@ -47,6 +47,12 @@ class GitLabAPIClient {
         const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `${this.apiBaseUrl}${normalizedEndpoint}`;
 
+        // Log request start with timing
+        const startTime = performance.now();
+        if (window.logger) {
+            window.logger.debug(`API request: ${normalizedEndpoint}`);
+        }
+
         // Add authentication header
         const headers = {
             'Content-Type': 'application/json',
@@ -79,8 +85,26 @@ class GitLabAPIClient {
                 await this._handleErrorResponse(response);
             }
 
-            return await response.json();
+            const data = await response.json();
+
+            // Log successful request with timing
+            const duration = performance.now() - startTime;
+            if (window.logger) {
+                window.logger.info(`API request completed: ${normalizedEndpoint} (${duration.toFixed(0)}ms)`);
+            }
+
+            return data;
         } catch (error) {
+            // Log error with timing and full context
+            const duration = performance.now() - startTime;
+            if (window.logger) {
+                window.logger.error(`API request failed: ${normalizedEndpoint} (${duration.toFixed(0)}ms)`, {
+                    errorType: error.errorType || error.name,
+                    message: error.message,
+                    url: url
+                });
+            }
+
             // Re-throw our custom errors (already have context)
             if (error.name === 'GitLabAPIError') {
                 throw error;
@@ -343,6 +367,10 @@ class GitLabAPIClient {
             ...params
         };
 
+        if (window.logger) {
+            window.logger.debug(`Starting paginated request: ${endpoint}`);
+        }
+
         while (hasNextPage) {
             // Add page parameter
             queryParams.page = currentPage;
@@ -353,6 +381,11 @@ class GitLabAPIClient {
             // Make request and capture response headers
             const normalizedEndpoint = fullEndpoint.startsWith('/') ? fullEndpoint : `/${fullEndpoint}`;
             const url = `${this.apiBaseUrl}${normalizedEndpoint}`;
+
+            const startTime = performance.now();
+            if (window.logger) {
+                window.logger.debug(`Fetching page ${currentPage}: ${endpoint}`);
+            }
 
             const headers = {
                 'Content-Type': 'application/json',
@@ -383,12 +416,25 @@ class GitLabAPIClient {
                 const pageResults = await response.json();
                 allResults = allResults.concat(pageResults);
 
+                const duration = performance.now() - startTime;
+                if (window.logger) {
+                    window.logger.info(`Fetched page ${currentPage}: ${endpoint} - ${pageResults.length} items (${duration.toFixed(0)}ms)`);
+                }
+
                 // Check for Link header to determine if there's a next page
                 const linkHeader = response.headers.get('Link');
                 hasNextPage = linkHeader && linkHeader.includes('rel="next"');
                 currentPage++;
 
             } catch (error) {
+                const duration = performance.now() - startTime;
+                if (window.logger) {
+                    window.logger.error(`Paginated request failed on page ${currentPage}: ${endpoint} (${duration.toFixed(0)}ms)`, {
+                        errorType: error.errorType || error.name,
+                        message: error.message
+                    });
+                }
+
                 // Re-throw our custom errors
                 if (error.name === 'GitLabAPIError') {
                     throw error;
@@ -404,6 +450,10 @@ class GitLabAPIClient {
                 contextError.originalError = error;
                 throw contextError;
             }
+        }
+
+        if (window.logger) {
+            window.logger.info(`Completed paginated request: ${endpoint} - total ${allResults.length} items across ${currentPage - 1} pages`);
         }
 
         return allResults;
