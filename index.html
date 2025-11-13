@@ -27,6 +27,82 @@
         h1 {
             margin-top: 0;
         }
+
+        /* Status color palette */
+        :root {
+            --status-success-bg: #28a745;
+            --status-success-border: #1e7e34;
+            --status-failed-bg: #dc3545;
+            --status-failed-border: #bd2130;
+            --status-running-bg: #007bff;
+            --status-running-border: #0056b3;
+            --status-neutral-bg: #6c757d;
+            --status-neutral-border: #545b62;
+            --status-canceled-bg: #fd7e14;
+            --status-canceled-border: #dc6502;
+        }
+
+        /* Pipeline status colors */
+        .vis-item.pipeline-success {
+            background-color: var(--status-success-bg);
+            border-color: var(--status-success-border);
+            color: white;
+        }
+        .vis-item.pipeline-failed {
+            background-color: var(--status-failed-bg);
+            border-color: var(--status-failed-border);
+            color: white;
+        }
+        .vis-item.pipeline-running {
+            background-color: var(--status-running-bg);
+            border-color: var(--status-running-border);
+            color: white;
+        }
+        .vis-item.pipeline-pending,
+        .vis-item.pipeline-skipped,
+        .vis-item.pipeline-manual,
+        .vis-item.pipeline-created {
+            background-color: var(--status-neutral-bg);
+            border-color: var(--status-neutral-border);
+            color: white;
+        }
+        .vis-item.pipeline-canceled,
+        .vis-item.pipeline-cancelled {
+            background-color: var(--status-canceled-bg);
+            border-color: var(--status-canceled-border);
+            color: white;
+        }
+
+        /* Job status colors */
+        .vis-item.job-success {
+            background-color: var(--status-success-bg);
+            border-color: var(--status-success-border);
+            color: white;
+        }
+        .vis-item.job-failed {
+            background-color: var(--status-failed-bg);
+            border-color: var(--status-failed-border);
+            color: white;
+        }
+        .vis-item.job-running {
+            background-color: var(--status-running-bg);
+            border-color: var(--status-running-border);
+            color: white;
+        }
+        .vis-item.job-pending,
+        .vis-item.job-skipped,
+        .vis-item.job-manual,
+        .vis-item.job-created {
+            background-color: var(--status-neutral-bg);
+            border-color: var(--status-neutral-border);
+            color: white;
+        }
+        .vis-item.job-canceled,
+        .vis-item.job-cancelled {
+            background-color: var(--status-canceled-bg);
+            border-color: var(--status-canceled-border);
+            color: white;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
