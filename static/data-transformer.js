@@ -321,7 +321,8 @@ class DataTransformer {
             const userGroup = {
                 id: userGroupId,
                 content: user.getDisplayName(),
-                nestedGroups: []
+                nestedGroups: [],
+                showNested: false  // Enable collapse/expand functionality
             };
 
             // Process each pipeline for this user
@@ -333,7 +334,8 @@ class DataTransformer {
                 const pipelineGroup = {
                     id: pipelineGroupId,
                     content: `Pipeline #${pipeline.id}`,
-                    nestedGroups: []
+                    nestedGroups: [],
+                    showNested: false  // Enable collapse/expand functionality
                 };
                 groups.push(pipelineGroup);
 
