@@ -73,7 +73,13 @@
     </div>
 
     <div class="test-section">
-        <h2>5. API Request Tests (requires valid token)</h2>
+        <h2>5. fetchJobs() Tests</h2>
+        <div id="fetchjobs-tests"></div>
+        <button onclick="runFetchJobsTests()">Run fetchJobs() Tests</button>
+    </div>
+
+    <div class="test-section">
+        <h2>6. API Request Tests (requires valid token)</h2>
         <div id="api-tests"></div>
         <button onclick="runAPITests()">Run API Tests</button>
     </div>
@@ -558,6 +564,240 @@
             // Restore
             window.fetch = originalFetch;
             Object.assign(CONFIG, originalConfig);
+        }
+
+        // fetchJobs() Tests
+        async function runFetchJobsTests() {
+            const container = document.getElementById('fetchjobs-tests');
+            container.innerHTML = '<p>Running fetchJobs() tests...</p>';
+
+            const originalFetch = window.fetch;
+
+            // Test 1: fetchJobs() with valid pipelines
+            try {
+                const mockPipelines = [
+                    { id: 1, project_id: 100 },
+                    { id: 2, project_id: 100 }
+                ];
+
+                window.fetch = async (url) => {
+                    if (url.includes('/projects/100/pipelines/1/jobs')) {
+                        return {
+                            ok: true,
+                            json: async () => [
+                                {
+                                    id: 10,
+                                    name: 'build',
+                                    stage: 'build',
+                                    status: 'success',
+                                    created_at: '2025-01-13T10:00:00Z',
+                                    started_at: '2025-01-13T10:01:00Z',
+                                    finished_at: '2025-01-13T10:05:00Z',
+                                    duration: 240,
+                                    web_url: 'https://gitlab.com/job/10',
+                                    user: { id: 1, username: 'user1', name: 'User One' }
+                                },
+                                {
+                                    id: 11,
+                                    name: 'test',
+                                    stage: 'test',
+                                    status: 'success',
+                                    created_at: '2025-01-13T10:05:00Z',
+                                    started_at: '2025-01-13T10:06:00Z',
+                                    finished_at: '2025-01-13T10:10:00Z',
+                                    duration: 240,
+                                    web_url: 'https://gitlab.com/job/11',
+                                    user: { id: 1, username: 'user1', name: 'User One' }
+                                }
+                            ]
+                        };
+                    }
+                    if (url.includes('/projects/100/pipelines/2/jobs')) {
+                        return {
+                            ok: true,
+                            json: async () => [
+                                {
+                                    id: 12,
+                                    name: 'build',
+                                    stage: 'build',
+                                    status: 'failed',
+                                    created_at: '2025-01-13T11:00:00Z',
+                                    started_at: '2025-01-13T11:01:00Z',
+                                    finished_at: '2025-01-13T11:03:00Z',
+                                    duration: 120,
+                                    web_url: 'https://gitlab.com/job/12',
+                                    user: { id: 2, username: 'user2', name: 'User Two' }
+                                }
+                            ]
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const jobs = await client.fetchJobs(mockPipelines);
+
+                const passed = Array.isArray(jobs) &&
+                              jobs.length === 3 &&
+                              jobs[0].id === 10 &&
+                              jobs[0].project_id === 100 &&
+                              jobs[0].pipeline_id === 1 &&
+                              jobs[1].id === 11 &&
+                              jobs[2].id === 12 &&
+                              jobs[2].pipeline_id === 2;
+                addResult('fetchjobs-tests', 'fetchJobs() with valid pipelines', passed,
+                         passed ? `Fetched ${jobs.length} jobs from ${mockPipelines.length} pipelines` : `Failed: got ${jobs.length} jobs`);
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() with valid pipelines', false, e.message);
+            }
+
+            // Test 2: fetchJobs() with empty pipelines array
+            try {
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchJobs([]);
+                    addResult('fetchjobs-tests', 'fetchJobs() with empty pipelines', false,
+                             'Should have thrown error for empty pipelines');
+                } catch (error) {
+                    const passed = error.message.includes('Pipelines array is empty');
+                    addResult('fetchjobs-tests', 'fetchJobs() with empty pipelines', passed,
+                             passed ? 'Correctly rejected empty pipelines' : `Wrong error: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() with empty pipelines', false, e.message);
+            }
+
+            // Test 3: fetchJobs() with invalid pipeline objects
+            try {
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchJobs([{ id: 1 }]); // Missing project_id
+                    addResult('fetchjobs-tests', 'fetchJobs() with invalid pipeline', false,
+                             'Should have thrown error for invalid pipeline');
+                } catch (error) {
+                    const passed = error.message.includes('missing required "project_id" or "id"');
+                    addResult('fetchjobs-tests', 'fetchJobs() with invalid pipeline', passed,
+                             passed ? 'Correctly rejected invalid pipeline' : `Wrong error: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() with invalid pipeline', false, e.message);
+            }
+
+            // Test 4: fetchJobs() handles partial failures
+            try {
+                const mockPipelines = [
+                    { id: 1, project_id: 100 },
+                    { id: 2, project_id: 100 },
+                    { id: 999, project_id: 100 } // This one will fail
+                ];
+
+                // Capture console.warn calls
+                const originalWarn = console.warn;
+                let warnCalled = false;
+                console.warn = (...args) => {
+                    warnCalled = true;
+                    originalWarn.apply(console, args);
+                };
+
+                window.fetch = async (url) => {
+                    if (url.includes('/pipelines/1/jobs')) {
+                        return {
+                            ok: true,
+                            json: async () => [
+                                { id: 10, name: 'build', stage: 'build', status: 'success', duration: 120 }
+                            ]
+                        };
+                    }
+                    if (url.includes('/pipelines/2/jobs')) {
+                        return {
+                            ok: true,
+                            json: async () => [
+                                { id: 20, name: 'test', stage: 'test', status: 'success', duration: 60 }
+                            ]
+                        };
+                    }
+                    if (url.includes('/pipelines/999/jobs')) {
+                        return {
+                            ok: false,
+                            status: 404,
+                            json: async () => ({ message: 'Pipeline not found' }),
+                            url: url
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const jobs = await client.fetchJobs(mockPipelines);
+
+                const passed = jobs.length === 2 && jobs[0].id === 10 && jobs[1].id === 20 && warnCalled;
+                addResult('fetchjobs-tests', 'fetchJobs() handles partial failures', passed,
+                         passed ? 'Returns successful jobs and logs warning' : `Got ${jobs.length} jobs, warn called: ${warnCalled}`);
+
+                console.warn = originalWarn;
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() handles partial failures', false, e.message);
+            }
+
+            // Test 5: fetchJobs() with pipelines that have no jobs
+            try {
+                const mockPipelines = [
+                    { id: 1, project_id: 100 }
+                ];
+
+                window.fetch = async (url) => {
+                    if (url.includes('/pipelines/1/jobs')) {
+                        return {
+                            ok: true,
+                            json: async () => [] // No jobs
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const jobs = await client.fetchJobs(mockPipelines);
+
+                const passed = Array.isArray(jobs) && jobs.length === 0;
+                addResult('fetchjobs-tests', 'fetchJobs() with pipelines that have no jobs', passed,
+                         passed ? 'Correctly returns empty array' : `Got ${jobs.length} jobs`);
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() with pipelines that have no jobs', false, e.message);
+            }
+
+            // Test 6: fetchJobs() when all pipelines fail
+            try {
+                const mockPipelines = [
+                    { id: 1, project_id: 100 },
+                    { id: 2, project_id: 100 }
+                ];
+
+                window.fetch = async (url) => {
+                    return {
+                        ok: false,
+                        status: 500,
+                        json: async () => ({ message: 'Server error' }),
+                        url: url
+                    };
+                };
+
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchJobs(mockPipelines);
+                    addResult('fetchjobs-tests', 'fetchJobs() when all pipelines fail', false,
+                             'Should have thrown error when all pipelines fail');
+                } catch (error) {
+                    const passed = error.message.includes('Failed to fetch jobs for all') &&
+                                  error.message.includes('pipelines');
+                    addResult('fetchjobs-tests', 'fetchJobs() when all pipelines fail', passed,
+                             passed ? 'Correctly throws error when all fail' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchjobs-tests', 'fetchJobs() when all pipelines fail', false, e.message);
+            }
+
+            // Restore
+            window.fetch = originalFetch;
         }
 
         // API Tests (requires actual GitLab connection)

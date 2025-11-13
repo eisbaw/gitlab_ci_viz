@@ -471,6 +471,96 @@ class GitLabAPIClient {
     }
 
     /**
+     * Fetch jobs for given pipelines
+     *
+     * Fetches all jobs for the provided pipelines using the GitLab API.
+     * Handles partial failures gracefully - if some pipelines fail to return jobs,
+     * the function continues and returns jobs from successful fetches.
+     *
+     * @param {Array} pipelines - Array of pipeline objects with project_id and id properties
+     * @returns {Promise<Array>} - Array of job objects with metadata:
+     *   [{
+     *     id: number,
+     *     name: string,
+     *     stage: string,
+     *     status: string,
+     *     created_at: string,
+     *     started_at: string|null,
+     *     finished_at: string|null,
+     *     duration: number|null,
+     *     web_url: string,
+     *     user: {id, username, name}|null,
+     *     project_id: number,
+     *     pipeline_id: number
+     *   }]
+     * @throws {Error} - If pipelines array is empty or invalid
+     */
+    async fetchJobs(pipelines) {
+        if (!Array.isArray(pipelines) || pipelines.length === 0) {
+            throw this._createError(
+                'ConfigurationError',
+                'Pipelines array is empty or invalid'
+            );
+        }
+
+        // Validate pipelines have required properties
+        for (const pipeline of pipelines) {
+            if (!pipeline.project_id || !pipeline.id) {
+                throw this._createError(
+                    'ConfigurationError',
+                    'Pipeline object missing required "project_id" or "id" property'
+                );
+            }
+        }
+
+        // Fetch jobs for all pipelines in parallel
+        // Each pipeline promise catches its own errors to allow partial success
+        const jobPromises = pipelines.map(pipeline =>
+            this.getPipelineJobs(pipeline.project_id, pipeline.id)
+                .then(jobs => ({
+                    pipelineId: pipeline.id,
+                    projectId: pipeline.project_id,
+                    success: true,
+                    jobs: jobs.map(j => ({
+                        ...j,
+                        project_id: pipeline.project_id,
+                        pipeline_id: pipeline.id
+                    }))
+                }))
+                .catch(error => ({
+                    pipelineId: pipeline.id,
+                    projectId: pipeline.project_id,
+                    success: false,
+                    error: { name: error.name, message: error.message, errorType: error.errorType }
+                }))
+        );
+
+        const results = await Promise.all(jobPromises);
+
+        // Separate successful and failed fetches
+        const succeeded = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+
+        // Log warnings for failed pipelines
+        if (failed.length > 0) {
+            console.warn(`Failed to fetch jobs for ${failed.length} of ${pipelines.length} pipelines:`,
+                failed.map(f => `pipeline ${f.pipelineId} (project ${f.projectId}): ${f.error.message}`));
+        }
+
+        // If ALL pipelines failed to fetch jobs, throw error (consistent with fetchPipelines)
+        if (succeeded.length === 0 && failed.length > 0) {
+            throw this._createError(
+                'JobFetchError',
+                `Failed to fetch jobs for all ${pipelines.length} pipelines`
+            );
+        }
+
+        // Flatten and return all successful job results
+        // Note: Empty array is valid when pipelines have no jobs yet (e.g., pending state)
+        return succeeded.flatMap(s => s.jobs);
+    }
+
+    /**
      * Parse time range string to ISO 8601 timestamp
      *
      * Supports relative time strings like "2 days ago", "1 week ago"
