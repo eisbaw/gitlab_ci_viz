@@ -198,5 +198,48 @@ class TestArgumentValidation(unittest.TestCase):
         serve.validate_arguments(args)
 
 
+class TestTokenRedaction(unittest.TestCase):
+    """Test token redaction for security."""
+
+    def test_redact_token_replaces_all_occurrences(self):
+        """Test that all token occurrences are redacted."""
+        text = "Token: glpat-abc123. Using token glpat-abc123 again."
+        result = serve.redact_token(text, "glpat-abc123")
+        self.assertEqual(result, "Token: [REDACTED]. Using token [REDACTED] again.")
+
+    def test_redact_token_handles_empty_text(self):
+        """Test empty text handling."""
+        self.assertEqual(serve.redact_token("", "token123"), "")
+
+    def test_redact_token_handles_none_text(self):
+        """Test None text handling."""
+        self.assertIsNone(serve.redact_token(None, "token123"))
+
+    def test_redact_token_fails_on_empty_token(self):
+        """Test that empty token raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            serve.redact_token("sensitive data", "")
+        self.assertIn("security violation", str(context.exception))
+
+    def test_redact_token_fails_on_none_token(self):
+        """Test that None token raises ValueError."""
+        with self.assertRaises(ValueError) as context:
+            serve.redact_token("sensitive data", None)
+        self.assertIn("security violation", str(context.exception))
+
+    def test_redact_token_preserves_non_matching_text(self):
+        """Test that non-matching text is preserved."""
+        text = "This text has no token"
+        result = serve.redact_token(text, "glpat-xyz")
+        self.assertEqual(result, text)
+
+    def test_redact_token_handles_special_characters(self):
+        """Test redaction with tokens containing special characters."""
+        token = "glpat-!@#$%^&*()"
+        text = f"Secret: {token} is here"
+        result = serve.redact_token(text, token)
+        self.assertEqual(result, "Secret: [REDACTED] is here")
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -29,6 +29,28 @@ logging.basicConfig(
 )
 
 
+def redact_token(text, token):
+    """Replace token occurrences in text with [REDACTED].
+
+    Args:
+        text: String to redact from (can be None or empty)
+        token: Token to redact (must not be None or empty)
+
+    Returns:
+        Text with token occurrences replaced by [REDACTED]
+
+    Raises:
+        ValueError: If token is None or empty (programming error)
+    """
+    if not text:
+        return text  # Empty/None text is fine, nothing to redact
+    if not token:
+        # This should never happen - indicates programming error
+        logging.error("SECURITY BUG: redact_token called with empty token")
+        raise ValueError("Cannot redact with empty token - security violation")
+    return text.replace(token, '[REDACTED]')
+
+
 def get_gitlab_token():
     """Execute 'glab auth token' and return the token."""
     logging.debug("Executing 'glab auth token' command")
@@ -48,6 +70,8 @@ def get_gitlab_token():
         return token
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr or e.stdout or "Unknown error"
+        # Note: Cannot redact token here as it doesn't exist yet (we're trying to obtain it)
+        # Token should not appear in glab error output
         logging.error(f"Failed to get GitLab token (exit {e.returncode}): {error_msg}")
         sys.exit(1)
     except FileNotFoundError:
@@ -97,6 +121,12 @@ def parse_arguments():
         type=str,
         default='https://gitlab.com',
         help='GitLab instance URL (default: https://gitlab.com)'
+    )
+
+    parser.add_argument(
+        '--allow-non-localhost',
+        action='store_true',
+        help='Allow serving on non-localhost addresses (INSECURE: token exposed to network)'
     )
 
     args = parser.parse_args()
@@ -161,6 +191,7 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
     """HTTP request handler that injects configuration into index.html."""
 
     config_js = None  # Class variable to hold the config JavaScript
+    token = None  # Class variable to hold token for redaction
 
     def do_GET(self):
         """Handle GET requests, injecting config into index.html."""
@@ -188,15 +219,18 @@ class ConfigInjectingHandler(SimpleHTTPRequestHandler):
 
                 self.wfile.write(html_with_config.encode('utf-8'))
             except FileNotFoundError as e:
+                error_msg = redact_token(str(e), self.token)
                 logging.error(f"index.html not found at {index_path}")
-                self.send_error(404, f"index.html not found: {e}")
+                self.send_error(404, f"index.html not found: {error_msg}")
         else:
             # Serve other static files normally
             super().do_GET()
 
     def log_message(self, format, *args):
-        """Override to provide cleaner logging."""
-        print(f"[{self.log_date_time_string()}] {format % args}")
+        """Override to provide cleaner logging with token redaction."""
+        message = format % args
+        message = redact_token(message, self.token)
+        print(f"[{self.log_date_time_string()}] {message}")
 
 
 def main():
@@ -205,6 +239,16 @@ def main():
 
     args = parse_arguments()
     validate_arguments(args)
+
+    # Security: Enforce localhost-only binding unless explicitly overridden
+    bind_address = '127.0.0.1'
+    if args.allow_non_localhost:
+        logging.warning("⚠️  SECURITY WARNING: Binding to all interfaces (0.0.0.0)")
+        logging.warning("⚠️  GitLab token will be exposed to your network!")
+        logging.warning("⚠️  Only use --allow-non-localhost in trusted networks")
+        bind_address = ''
+    else:
+        logging.info("Binding to localhost only (127.0.0.1) for security")
 
     # Get GitLab token
     print("Obtaining GitLab authentication token...")
@@ -215,10 +259,11 @@ def main():
     logging.debug("Generating JavaScript configuration")
     config_js = create_config_js(token, args)
     ConfigInjectingHandler.config_js = config_js
+    ConfigInjectingHandler.token = token  # Store for redaction in error messages
     logging.info("Configuration prepared successfully")
 
     # Start HTTP server
-    server_address = ('', args.port)
+    server_address = (bind_address, args.port)
     httpd = HTTPServer(server_address, ConfigInjectingHandler)
 
     print(f"\n{'='*60}")
