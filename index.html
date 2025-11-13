@@ -36,18 +36,22 @@
     <div id="visualization"></div>
 
     <script src="/static/vis-timeline-graph2d-8.3.1.min.js"></script>
+    <script src="/static/api-client.js"></script>
     <script>
         // Global timeline instance
         let timeline = null;
+
+        // Global API client instance
+        let apiClient = null;
 
         // Display configuration status and initialize timeline
         document.addEventListener('DOMContentLoaded', function() {
             const statusDiv = document.getElementById('status');
 
-            if (typeof CONFIG === 'undefined') {
-                statusDiv.innerHTML = '<strong>Error:</strong> Configuration not loaded';
-                statusDiv.style.backgroundColor = '#ffe8e8';
-            } else {
+            // Initialize API client
+            try {
+                apiClient = new GitLabAPIClient();
+
                 let statusHtml = '<strong>Configuration loaded successfully:</strong><br>';
                 statusHtml += `GitLab URL: ${CONFIG.gitlabUrl}<br>`;
                 statusHtml += `Time range: since ${CONFIG.since}<br>`;
@@ -58,9 +62,14 @@
                     statusHtml += `Project IDs: ${CONFIG.projectIds.join(', ')}<br>`;
                 }
 
-                statusHtml += `Token: ${CONFIG.gitlabToken ? '✓ Present' : '✗ Missing'}<br>`;
+                statusHtml += `Token: ✓ Present<br>`;
+                statusHtml += `API Client: ✓ Initialized<br>`;
                 statusDiv.innerHTML = statusHtml;
                 statusDiv.style.backgroundColor = '#e8f8e8';
+            } catch (error) {
+                statusDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+                statusDiv.style.backgroundColor = '#ffe8e8';
+                return; // Stop initialization if API client fails
             }
 
             // Test vis.js library
@@ -68,7 +77,7 @@
                 statusDiv.innerHTML += '<br><strong>Error:</strong> vis.js library not loaded';
                 statusDiv.style.backgroundColor = '#ffe8e8';
             } else {
-                statusDiv.innerHTML += '<br>vis.js library: ✓ Loaded';
+                statusDiv.innerHTML += 'vis.js library: ✓ Loaded';
 
                 // Initialize Timeline
                 initializeTimeline();

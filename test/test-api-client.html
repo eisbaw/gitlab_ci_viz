@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Client Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .test-section h2 {
+            margin-top: 0;
+        }
+        .pass {
+            color: green;
+            font-weight: bold;
+        }
+        .fail {
+            color: red;
+            font-weight: bold;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>GitLab API Client Test Suite</h1>
+
+    <div class="test-section">
+        <h2>1. Configuration Tests</h2>
+        <div id="config-tests"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Constructor Tests</h2>
+        <div id="constructor-tests"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Error Handling Tests</h2>
+        <div id="error-tests"></div>
+        <button onclick="runErrorTests()">Run Error Handling Tests</button>
+    </div>
+
+    <div class="test-section">
+        <h2>4. API Request Tests (requires valid token)</h2>
+        <div id="api-tests"></div>
+        <button onclick="runAPITests()">Run API Tests</button>
+    </div>
+
+    <!-- Mock CONFIG for testing -->
+    <script>
+        // Mock CONFIG object
+        window.CONFIG = {
+            gitlabToken: 'test-token-123',
+            gitlabUrl: 'https://gitlab.com',
+            since: '2 days ago'
+        };
+    </script>
+
+    <script src="../static/api-client.js"></script>
+
+    <script>
+        // Test utilities
+        function addResult(containerId, testName, passed, message) {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = 'test-result';
+            div.innerHTML = `
+                <span class="${passed ? 'pass' : 'fail'}">${passed ? 'PASS' : 'FAIL'}</span>
+                <strong>${testName}</strong>: ${message}
+            `;
+            container.appendChild(div);
+        }
+
+        function runTest(name, testFn) {
+            try {
+                testFn();
+                return { name, passed: true, message: 'Test passed' };
+            } catch (error) {
+                return { name, passed: false, message: error.message };
+            }
+        }
+
+        // Configuration Tests
+        function testConfigTests() {
+            const results = [];
+
+            // Test 1: CONFIG object exists
+            results.push(runTest('CONFIG object exists', () => {
+                if (typeof CONFIG === 'undefined') {
+                    throw new Error('CONFIG object not found');
+                }
+            }));
+
+            // Test 2: CONFIG has required properties
+            results.push(runTest('CONFIG has gitlabToken', () => {
+                if (!CONFIG.gitlabToken) {
+                    throw new Error('gitlabToken not found in CONFIG');
+                }
+            }));
+
+            results.push(runTest('CONFIG has gitlabUrl', () => {
+                if (!CONFIG.gitlabUrl) {
+                    throw new Error('gitlabUrl not found in CONFIG');
+                }
+            }));
+
+            results.forEach(r => addResult('config-tests', r.name, r.passed, r.message));
+        }
+
+        // Constructor Tests
+        function testConstructor() {
+            const results = [];
+
+            // Test 1: Constructor succeeds with valid config
+            results.push(runTest('Constructor succeeds with valid CONFIG', () => {
+                const client = new GitLabAPIClient();
+                if (!client.gitlabToken) {
+                    throw new Error('Token not set');
+                }
+                if (!client.gitlabUrl) {
+                    throw new Error('URL not set');
+                }
+            }));
+
+            // Test 2: API base URL is constructed correctly
+            results.push(runTest('API base URL constructed correctly', () => {
+                const client = new GitLabAPIClient();
+                if (client.apiBaseUrl !== 'https://gitlab.com/api/v4') {
+                    throw new Error(`Expected https://gitlab.com/api/v4, got ${client.apiBaseUrl}`);
+                }
+            }));
+
+            // Test 3: Trailing slash is removed from URL
+            results.push(runTest('Trailing slash removed from URL', () => {
+                const originalConfig = { ...CONFIG };
+                CONFIG.gitlabUrl = 'https://gitlab.com/';
+                const client = new GitLabAPIClient();
+                if (client.gitlabUrl !== 'https://gitlab.com') {
+                    throw new Error('Trailing slash not removed');
+                }
+                Object.assign(CONFIG, originalConfig);
+            }));
+
+            // Test 4: Constructor fails without CONFIG
+            results.push(runTest('Constructor fails without CONFIG', () => {
+                const originalConfig = window.CONFIG;
+                delete window.CONFIG;
+                try {
+                    new GitLabAPIClient();
+                    throw new Error('Constructor should have thrown error');
+                } catch (error) {
+                    if (!error.message.includes('CONFIG object not found')) {
+                        throw new Error('Wrong error message: ' + error.message);
+                    }
+                }
+                window.CONFIG = originalConfig;
+            }));
+
+            // Test 5: Constructor fails without token
+            results.push(runTest('Constructor fails without token', () => {
+                const originalToken = CONFIG.gitlabToken;
+                CONFIG.gitlabToken = null;
+                try {
+                    new GitLabAPIClient();
+                    throw new Error('Constructor should have thrown error');
+                } catch (error) {
+                    if (!error.message.includes('token not found')) {
+                        throw new Error('Wrong error message: ' + error.message);
+                    }
+                }
+                CONFIG.gitlabToken = originalToken;
+            }));
+
+            results.forEach(r => addResult('constructor-tests', r.name, r.passed, r.message));
+        }
+
+        // Error Handling Tests
+        async function runErrorTests() {
+            const container = document.getElementById('error-tests');
+            container.innerHTML = '<p>Running error handling tests...</p>';
+
+            const client = new GitLabAPIClient();
+
+            // Mock fetch for error testing
+            const originalFetch = window.fetch;
+
+            // Test 1: 401 Invalid Token
+            try {
+                window.fetch = async () => ({
+                    ok: false,
+                    status: 401,
+                    json: async () => ({ message: 'Unauthorized' })
+                });
+
+                try {
+                    await client.request('/test');
+                    addResult('error-tests', '401 Invalid Token', false, 'Should have thrown error');
+                } catch (error) {
+                    const passed = error.message.includes('GitLab token invalid') &&
+                                  error.message.includes('glab auth login');
+                    addResult('error-tests', '401 Invalid Token', passed,
+                             passed ? 'Correct error message' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('error-tests', '401 Invalid Token', false, e.message);
+            }
+
+            // Test 2: 403 Expired Token
+            try {
+                window.fetch = async () => ({
+                    ok: false,
+                    status: 403,
+                    json: async () => ({ message: 'Forbidden' })
+                });
+
+                try {
+                    await client.request('/test');
+                    addResult('error-tests', '403 Expired Token', false, 'Should have thrown error');
+                } catch (error) {
+                    const passed = error.message.includes('Token expired') &&
+                                  error.message.includes('glab auth login');
+                    addResult('error-tests', '403 Expired Token', passed,
+                             passed ? 'Correct error message' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('error-tests', '403 Expired Token', false, e.message);
+            }
+
+            // Test 3: 404 Not Found
+            try {
+                window.fetch = async () => ({
+                    ok: false,
+                    status: 404,
+                    json: async () => ({ message: 'Not Found' }),
+                    url: 'https://gitlab.com/api/v4/projects/999'
+                });
+
+                try {
+                    await client.request('/projects/999');
+                    addResult('error-tests', '404 Not Found', false, 'Should have thrown error');
+                } catch (error) {
+                    const passed = error.message.includes('Resource not found');
+                    addResult('error-tests', '404 Not Found', passed,
+                             passed ? 'Correct error message' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('error-tests', '404 Not Found', false, e.message);
+            }
+
+            // Test 4: 429 Rate Limit
+            try {
+                window.fetch = async () => ({
+                    ok: false,
+                    status: 429,
+                    json: async () => ({ message: 'Rate limit exceeded' })
+                });
+
+                try {
+                    await client.request('/test');
+                    addResult('error-tests', '429 Rate Limit', false, 'Should have thrown error');
+                } catch (error) {
+                    const passed = error.message.includes('rate limit exceeded');
+                    addResult('error-tests', '429 Rate Limit', passed,
+                             passed ? 'Correct error message' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('error-tests', '429 Rate Limit', false, e.message);
+            }
+
+            // Test 5: Network Error
+            try {
+                window.fetch = async () => {
+                    throw new Error('Network connection failed');
+                };
+
+                try {
+                    await client.request('/test');
+                    addResult('error-tests', 'Network Error', false, 'Should have thrown error');
+                } catch (error) {
+                    const passed = error.message.includes('Network error');
+                    addResult('error-tests', 'Network Error', passed,
+                             passed ? 'Correct error message' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('error-tests', 'Network Error', false, e.message);
+            }
+
+            // Test 6: Authorization header is included
+            try {
+                let capturedHeaders = null;
+                window.fetch = async (url, options) => {
+                    capturedHeaders = options.headers;
+                    return {
+                        ok: true,
+                        json: async () => ({ success: true })
+                    };
+                };
+
+                await client.request('/test');
+                const passed = capturedHeaders &&
+                              capturedHeaders.Authorization === 'Bearer test-token-123';
+                addResult('error-tests', 'Authorization Header', passed,
+                         passed ? 'Header correctly set' : `Got: ${JSON.stringify(capturedHeaders)}`);
+            } catch (e) {
+                addResult('error-tests', 'Authorization Header', false, e.message);
+            }
+
+            // Restore fetch
+            window.fetch = originalFetch;
+        }
+
+        // API Tests (requires actual GitLab connection)
+        async function runAPITests() {
+            const container = document.getElementById('api-tests');
+            container.innerHTML = '<p>Running API tests (requires valid token)...</p>';
+
+            const client = new GitLabAPIClient();
+
+            // Note: These tests require a valid token and actual GitLab access
+            // They are informational and may fail if token is invalid
+
+            addResult('api-tests', 'API Tests', false,
+                     'API tests require valid token and are not automated. ' +
+                     'Use browser developer tools to test manually with a valid token.');
+        }
+
+        // Run tests on load
+        window.addEventListener('DOMContentLoaded', () => {
+            testConfigTests();
+            testConstructor();
+        });
+    </script>
+</body>
+</html>
