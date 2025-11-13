@@ -28,6 +28,7 @@
             margin-top: 0;
         }
     </style>
+    <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
 <body>
     <h1>GitLab CI GANTT Visualizer</h1>
@@ -36,8 +37,6 @@
 
     <script src="/static/vis-timeline-graph2d-8.3.1.min.js"></script>
     <script>
-        // CONFIG object will be injected here by serve.py
-
         // Display configuration status
         document.addEventListener('DOMContentLoaded', function() {
             const statusDiv = document.getElementById('status');
