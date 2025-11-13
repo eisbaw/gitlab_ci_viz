@@ -221,6 +221,89 @@ class GitLabAPIClient {
     async getPipelineJobs(projectId, pipelineId) {
         return this.request(`/projects/${projectId}/pipelines/${pipelineId}/jobs`);
     }
+
+    /**
+     * Fetch projects based on configuration (either from group or specific project IDs)
+     *
+     * This is the main entry point for project fetching that handles both modes:
+     * - Group mode: Fetches all projects from a GitLab group
+     * - Project list mode: Fetches details for specific project IDs (partial failures allowed)
+     *
+     * @returns {Promise<Array>} - Array of project objects with structure:
+     *   [{
+     *     id: number,
+     *     name: string,
+     *     path_with_namespace: string,
+     *     web_url: string
+     *   }]
+     * @throws {Error} - If configuration is invalid or all API calls fail
+     */
+    async fetchProjects() {
+        // Mode 1: Fetch projects from a group
+        if (CONFIG.groupId) {
+            try {
+                return await this.getGroupProjects(CONFIG.groupId);
+            } catch (error) {
+                // Wrap error with context instead of mutating
+                if (error.name === 'GitLabAPIError') {
+                    const contextError = this._createError(
+                        error.errorType,
+                        `Failed to fetch projects from group ${CONFIG.groupId}: ${error.message}`
+                    );
+                    contextError.originalError = error;
+                    throw contextError;
+                }
+                throw error;
+            }
+        }
+
+        // Mode 2: Use specific project IDs
+        if (CONFIG.projectIds && Array.isArray(CONFIG.projectIds)) {
+            if (CONFIG.projectIds.length === 0) {
+                throw this._createError(
+                    'ConfigurationError',
+                    'Project IDs list is empty'
+                );
+            }
+
+            // Fetch project details for each ID using allSettled for partial success
+            const projectPromises = CONFIG.projectIds.map(projectId =>
+                this.request(`/projects/${projectId}`)
+            );
+
+            const results = await Promise.allSettled(projectPromises);
+
+            const succeeded = results
+                .filter(r => r.status === 'fulfilled')
+                .map(r => r.value);
+
+            const failed = results
+                .filter(r => r.status === 'rejected')
+                .map((r, idx) => ({ id: CONFIG.projectIds[idx], error: r.reason }));
+
+            // Log warnings for failed projects but continue with successes
+            if (failed.length > 0) {
+                console.warn(`Failed to fetch ${failed.length} of ${CONFIG.projectIds.length} projects:`,
+                            failed.map(f => `${f.id}: ${f.error.message}`));
+            }
+
+            // Only fail if ALL projects failed
+            if (succeeded.length === 0) {
+                throw this._createError(
+                    'ConfigurationError',
+                    `Failed to fetch all ${CONFIG.projectIds.length} configured projects`
+                );
+            }
+
+            return succeeded;
+        }
+
+        // Neither groupId nor projectIds is configured
+        throw this._createError(
+            'ConfigurationError',
+            'Neither groupId nor projectIds found in configuration'
+        );
+    }
 }
 
 // Export for use in other modules

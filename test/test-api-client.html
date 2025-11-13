@@ -67,7 +67,13 @@
     </div>
 
     <div class="test-section">
-        <h2>4. API Request Tests (requires valid token)</h2>
+        <h2>4. fetchProjects() Tests</h2>
+        <div id="fetchprojects-tests"></div>
+        <button onclick="runFetchProjectsTests()">Run fetchProjects() Tests</button>
+    </div>
+
+    <div class="test-section">
+        <h2>5. API Request Tests (requires valid token)</h2>
         <div id="api-tests"></div>
         <button onclick="runAPITests()">Run API Tests</button>
     </div>
@@ -333,6 +339,225 @@
 
             // Restore fetch
             window.fetch = originalFetch;
+        }
+
+        // fetchProjects() Tests
+        async function runFetchProjectsTests() {
+            const container = document.getElementById('fetchprojects-tests');
+            container.innerHTML = '<p>Running fetchProjects() tests...</p>';
+
+            const originalFetch = window.fetch;
+            const originalConfig = { ...CONFIG };
+
+            // Test 1: fetchProjects() with groupId
+            try {
+                CONFIG.groupId = '12345';
+                delete CONFIG.projectIds;
+
+                window.fetch = async (url) => {
+                    if (url.includes('/groups/12345/projects')) {
+                        return {
+                            ok: true,
+                            json: async () => [
+                                { id: 1, name: 'project-1', path_with_namespace: 'group/project-1', web_url: 'https://gitlab.com/group/project-1' },
+                                { id: 2, name: 'project-2', path_with_namespace: 'group/project-2', web_url: 'https://gitlab.com/group/project-2' }
+                            ]
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const projects = await client.fetchProjects();
+
+                const passed = Array.isArray(projects) && projects.length === 2 && projects[0].id === 1;
+                addResult('fetchprojects-tests', 'fetchProjects() with groupId', passed,
+                         passed ? `Fetched ${projects.length} projects from group` : 'Failed to fetch projects');
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() with groupId', false, e.message);
+            }
+
+            // Test 2: fetchProjects() with projectIds
+            try {
+                delete CONFIG.groupId;
+                CONFIG.projectIds = ['100', '200', '300'];
+
+                let fetchedUrls = [];
+                window.fetch = async (url) => {
+                    fetchedUrls.push(url);
+                    if (url.includes('/projects/100')) {
+                        return {
+                            ok: true,
+                            json: async () => ({ id: 100, name: 'project-100', path_with_namespace: 'user/project-100', web_url: 'https://gitlab.com/user/project-100' })
+                        };
+                    }
+                    if (url.includes('/projects/200')) {
+                        return {
+                            ok: true,
+                            json: async () => ({ id: 200, name: 'project-200', path_with_namespace: 'user/project-200', web_url: 'https://gitlab.com/user/project-200' })
+                        };
+                    }
+                    if (url.includes('/projects/300')) {
+                        return {
+                            ok: true,
+                            json: async () => ({ id: 300, name: 'project-300', path_with_namespace: 'user/project-300', web_url: 'https://gitlab.com/user/project-300' })
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const projects = await client.fetchProjects();
+
+                const passed = Array.isArray(projects) &&
+                              projects.length === 3 &&
+                              projects[0].id === 100 &&
+                              projects[1].id === 200 &&
+                              projects[2].id === 300;
+                addResult('fetchprojects-tests', 'fetchProjects() with projectIds', passed,
+                         passed ? `Fetched ${projects.length} projects by ID` : `Failed: got ${projects.length} projects`);
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() with projectIds', false, e.message);
+            }
+
+            // Test 3: fetchProjects() with empty projectIds array
+            try {
+                delete CONFIG.groupId;
+                CONFIG.projectIds = [];
+
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchProjects();
+                    addResult('fetchprojects-tests', 'fetchProjects() with empty projectIds', false,
+                             'Should have thrown error for empty projectIds');
+                } catch (error) {
+                    const passed = error.message.includes('Project IDs list is empty');
+                    addResult('fetchprojects-tests', 'fetchProjects() with empty projectIds', passed,
+                             passed ? 'Correctly rejected empty projectIds' : `Wrong error: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() with empty projectIds', false, e.message);
+            }
+
+            // Test 4: fetchProjects() with neither groupId nor projectIds
+            try {
+                delete CONFIG.groupId;
+                delete CONFIG.projectIds;
+
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchProjects();
+                    addResult('fetchprojects-tests', 'fetchProjects() with no config', false,
+                             'Should have thrown error when neither groupId nor projectIds is present');
+                } catch (error) {
+                    const passed = error.message.includes('Neither groupId nor projectIds');
+                    addResult('fetchprojects-tests', 'fetchProjects() with no config', passed,
+                             passed ? 'Correctly rejected missing config' : `Wrong error: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() with no config', false, e.message);
+            }
+
+            // Test 5: fetchProjects() handles API errors for group
+            try {
+                CONFIG.groupId = '99999';
+                delete CONFIG.projectIds;
+
+                window.fetch = async () => ({
+                    ok: false,
+                    status: 404,
+                    json: async () => ({ message: 'Not Found' }),
+                    url: 'https://gitlab.com/api/v4/groups/99999/projects'
+                });
+
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchProjects();
+                    addResult('fetchprojects-tests', 'fetchProjects() handles group API error', false,
+                             'Should have thrown error for 404');
+                } catch (error) {
+                    const passed = error.message.includes('Failed to fetch projects from group 99999');
+                    addResult('fetchprojects-tests', 'fetchProjects() handles group API error', passed,
+                             passed ? 'Error includes context about group' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() handles group API error', false, e.message);
+            }
+
+            // Test 6: fetchProjects() handles partial failures (succeeds with warning)
+            try {
+                delete CONFIG.groupId;
+                CONFIG.projectIds = ['100', '999'];
+
+                // Capture console.warn calls
+                const originalWarn = console.warn;
+                let warnCalled = false;
+                console.warn = (...args) => {
+                    warnCalled = true;
+                    originalWarn.apply(console, args);
+                };
+
+                window.fetch = async (url) => {
+                    if (url.includes('/projects/100')) {
+                        return {
+                            ok: true,
+                            json: async () => ({ id: 100, name: 'project-100' })
+                        };
+                    }
+                    if (url.includes('/projects/999')) {
+                        return {
+                            ok: false,
+                            status: 404,
+                            json: async () => ({ message: 'Not Found' }),
+                            url: 'https://gitlab.com/api/v4/projects/999'
+                        };
+                    }
+                    throw new Error('Unexpected URL: ' + url);
+                };
+
+                const client = new GitLabAPIClient();
+                const projects = await client.fetchProjects();
+
+                const passed = projects.length === 1 && projects[0].id === 100 && warnCalled;
+                addResult('fetchprojects-tests', 'fetchProjects() handles partial failures', passed,
+                         passed ? 'Returns successful projects and logs warning' : `Got ${projects.length} projects, warn called: ${warnCalled}`);
+
+                console.warn = originalWarn;
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() handles partial failures', false, e.message);
+            }
+
+            // Test 7: fetchProjects() fails when all projects fail
+            try {
+                delete CONFIG.groupId;
+                CONFIG.projectIds = ['998', '999'];
+
+                window.fetch = async (url) => {
+                    return {
+                        ok: false,
+                        status: 404,
+                        json: async () => ({ message: 'Not Found' }),
+                        url: url
+                    };
+                };
+
+                const client = new GitLabAPIClient();
+                try {
+                    await client.fetchProjects();
+                    addResult('fetchprojects-tests', 'fetchProjects() fails when all projects fail', false,
+                             'Should have thrown error when all projects fail');
+                } catch (error) {
+                    const passed = error.message.includes('Failed to fetch all') && error.message.includes('configured projects');
+                    addResult('fetchprojects-tests', 'fetchProjects() fails when all projects fail', passed,
+                             passed ? 'Correctly throws error when all fail' : `Got: ${error.message}`);
+                }
+            } catch (e) {
+                addResult('fetchprojects-tests', 'fetchProjects() fails when all projects fail', false, e.message);
+            }
+
+            // Restore
+            window.fetch = originalFetch;
+            Object.assign(CONFIG, originalConfig);
         }
 
         // API Tests (requires actual GitLab connection)
