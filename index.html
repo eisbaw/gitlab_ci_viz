@@ -92,6 +92,9 @@
 
             // Initialize Timeline
             initializeTimeline();
+
+            // Fetch and render data
+            fetchAndRender();
         });
 
         /**
@@ -161,6 +164,101 @@
             timeline = new vis.Timeline(container, items, groups, options);
 
             console.log('Timeline initialized successfully');
+        }
+
+        /**
+         * Fetch GitLab data and render on timeline
+         *
+         * Orchestrates the complete data flow:
+         * 1. Fetch projects from GitLab API
+         * 2. Fetch pipelines for those projects
+         * 3. Fetch jobs for those pipelines
+         * 4. Transform to vis.js format
+         * 5. Update timeline with transformed data
+         */
+        async function fetchAndRender() {
+            const statusDiv = document.getElementById('status');
+
+            try {
+                // Update status
+                statusDiv.innerHTML += '<br><br><strong>Fetching data from GitLab...</strong>';
+
+                // Step 1: Fetch projects
+                statusDiv.innerHTML += '<br>Fetching projects...';
+                const projects = await apiClient.fetchProjects();
+                statusDiv.innerHTML += ` ✓ (${projects.length} projects)`;
+
+                // Create project map for quick lookup
+                const projectMap = new Map();
+                projects.forEach(p => projectMap.set(p.id, p));
+
+                // Step 2: Fetch pipelines
+                statusDiv.innerHTML += '<br>Fetching pipelines...';
+                const pipelines = await apiClient.fetchPipelines(projects);
+                statusDiv.innerHTML += ` ✓ (${pipelines.length} pipelines)`;
+
+                if (pipelines.length === 0) {
+                    statusDiv.innerHTML += '<br><strong>No pipelines found for the specified time range.</strong>';
+                    return;
+                }
+
+                // Step 3: Fetch jobs
+                statusDiv.innerHTML += '<br>Fetching jobs...';
+                const jobs = await apiClient.fetchJobs(pipelines);
+                statusDiv.innerHTML += ` ✓ (${jobs.length} jobs)`;
+
+                // Step 4: Transform to vis.js format
+                statusDiv.innerHTML += '<br>Transforming data...';
+                const transformed = DataTransformer.transform(pipelines, jobs);
+
+                // Step 5: Enrich pipeline items with project names
+                const enrichedItems = transformed.items.map(item => {
+                    // Check if this is a pipeline item (not a job item)
+                    if (item.id.startsWith('pipeline-item-')) {
+                        const pipelineId = parseInt(item.id.replace('pipeline-item-', ''), 10);
+                        const pipeline = pipelines.find(p => p.id === pipelineId);
+
+                        if (!pipeline) {
+                            throw new Error(
+                                `Data integrity error: Timeline item references unknown pipeline ${pipelineId}. ` +
+                                `This should never happen - indicates bug in DataTransformer.`
+                            );
+                        }
+
+                        const project = projectMap.get(pipeline.project_id);
+                        if (!project) {
+                            throw new Error(
+                                `Data integrity error: Pipeline ${pipelineId} references unknown project ${pipeline.project_id}. ` +
+                                `Available projects: [${Array.from(projectMap.keys()).join(', ')}]`
+                            );
+                        }
+
+                        // Return enriched item (immutable)
+                        return {
+                            ...item,
+                            content: `${project.name} #${pipeline.id}`
+                        };
+                    }
+
+                    // Return non-pipeline items unchanged
+                    return item;
+                });
+
+                statusDiv.innerHTML += ' ✓';
+
+                // Step 6: Update timeline
+                statusDiv.innerHTML += '<br>Rendering timeline...';
+                timeline.setGroups(transformed.groups);
+                timeline.setItems(enrichedItems);
+                statusDiv.innerHTML += ' ✓';
+
+                statusDiv.innerHTML += '<br><br><strong style="color: green;">Data loaded successfully!</strong>';
+
+            } catch (error) {
+                console.error('Error fetching and rendering data:', error);
+                statusDiv.innerHTML += `<br><br><strong style="color: red;">Error: ${error.message}</strong>`;
+                statusDiv.style.backgroundColor = '#ffe8e8';
+            }
         }
     </script>
 </body>
