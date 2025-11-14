@@ -34,10 +34,9 @@ lint:
     ruff check .
     ruff format --check .
 
-# Start development server (note: quote arguments with spaces, e.g. --since '2 days ago')
-# For reliable argument passing with quotes, use: nix-shell --run "python serve.py --group foo --since '2 days ago'"
+# Run the server, then connect on localhost:8000
 run *ARGS:
-    python serve.py {{ ARGS }}
+    python serve.py --group example-group --since '2 days ago' --gitlab-url https://gitlab.example.com {{ ARGS }}
 
 # Clean temporary files and caches
 clean:
