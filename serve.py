@@ -42,14 +42,15 @@ def redact_token(text, token):
         Text with token occurrences replaced by [REDACTED]
 
     Raises:
-        ValueError: If token is None or empty (programming error)
+        AssertionError: If token is None or empty (programming error)
     """
+    assert token, (
+        "redact_token() called with empty token - programming error. "
+        "Token must be validated before calling this function. "
+        "Check call site: only call redact_token() with non-empty tokens."
+    )
     if not text:
         return text  # Empty/None text is fine, nothing to redact
-    if not token:
-        # This should never happen - indicates programming error
-        logging.error("SECURITY BUG: redact_token called with empty token")
-        raise ValueError("Cannot redact with empty token - security violation")
     return text.replace(token, '[REDACTED]')
 
 

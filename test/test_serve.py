@@ -578,16 +578,16 @@ class TestTokenRedaction(unittest.TestCase):
         self.assertIsNone(serve.redact_token(None, "token123"))
 
     def test_redact_token_fails_on_empty_token(self):
-        """Test that empty token raises ValueError."""
-        with self.assertRaises(ValueError) as context:
+        """Test that empty token raises AssertionError (programming error)."""
+        with self.assertRaises(AssertionError) as context:
             serve.redact_token("sensitive data", "")
-        self.assertIn("security violation", str(context.exception))
+        self.assertIn("programming error", str(context.exception))
 
     def test_redact_token_fails_on_none_token(self):
-        """Test that None token raises ValueError."""
-        with self.assertRaises(ValueError) as context:
+        """Test that None token raises AssertionError (programming error)."""
+        with self.assertRaises(AssertionError) as context:
             serve.redact_token("sensitive data", None)
-        self.assertIn("security violation", str(context.exception))
+        self.assertIn("programming error", str(context.exception))
 
     def test_redact_token_preserves_non_matching_text(self):
         """Test that non-matching text is preserved."""

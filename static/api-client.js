@@ -334,8 +334,12 @@ class GitLabAPIClient {
 
             // Log warnings for failed projects but continue with successes
             if (failed.length > 0) {
-                console.warn(`Failed to fetch ${failed.length} of ${CONFIG.projectIds.length} projects:`,
-                            failed.map(f => `${f.id}: ${f.error.message}`));
+                const failureRate = (failed.length / CONFIG.projectIds.length * 100).toFixed(0);
+                console.warn(
+                    `PARTIAL FAILURE: ${failed.length}/${CONFIG.projectIds.length} projects ` +
+                    `(${failureRate}%) failed to fetch. Continuing with ${succeeded.length} projects.`
+                );
+                failed.forEach(f => console.warn(`  - Project ${f.id}: ${f.error.message}`));
             }
 
             // Only fail if ALL projects failed

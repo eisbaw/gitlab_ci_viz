@@ -115,7 +115,8 @@ class Pipeline {
         }
 
         // Pending pipeline: show small bar for visibility (5 minutes)
-        // 5 minutes is enough to see pending items without clutter
+        // WHY 5 minutes: Provides visibility without cluttering timeline.
+        // Based on typical GitLab pending queue times before runner assignment.
         const created = new Date(this.createdAt);
         const PENDING_VISIBILITY_MS = 5 * 60 * 1000;
         const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
@@ -202,7 +203,8 @@ class Job {
         }
 
         // Pending job: show small bar for visibility (2 minutes)
-        // Shorter than pipelines (5 min) since jobs typically start quickly
+        // WHY 2 minutes: Shorter than pipelines (5 min) since jobs typically start quickly
+        // once runner is assigned. Balances visibility vs timeline clutter.
         const created = new Date(this.createdAt);
         const PENDING_VISIBILITY_MS = 2 * 60 * 1000;
         const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
