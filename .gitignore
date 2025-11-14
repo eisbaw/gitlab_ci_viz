@@ -64,3 +64,6 @@ ENV/
 
 # Cruft and stale files
 cruft/
+
+# Chrome DevTools MCP - project-local profile data
+.chrome-profile/

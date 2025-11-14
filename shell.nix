@@ -2,6 +2,9 @@
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
+    # Node.js (required for chrome-devtools-mcp MCP server - needs >=20.19.0)
+    nodejs_22
+
     # Python development
     python3
     python3Packages.pytest
@@ -15,7 +18,7 @@ pkgs.mkShell {
     chromium
     chromedriver
 
-    # GitLab CLI
+    # GitLab CI visualization
     glab
 
     # Task automation
@@ -26,5 +29,12 @@ pkgs.mkShell {
     echo "GitLab CI GANTT Visualizer - Development Environment"
     python --version
     glab --version
+
+    # Export paths for Chrome DevTools MCP integration
+    export CHROMIUM_PATH="${pkgs.chromium}/bin/chromium"
+    export CHROME_PROFILE_DIR="$(pwd)/.chrome-profile"
+
+    # Create project-local Chrome profile directory if it doesn't exist
+    mkdir -p "$CHROME_PROFILE_DIR"
   '';
 }
