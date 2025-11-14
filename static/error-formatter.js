@@ -7,8 +7,14 @@
 
 /**
  * Escape HTML to prevent XSS
+ * @param {string} str - String to escape
+ * @returns {string} HTML-escaped string
+ * @throws {TypeError} If str is not a string
  */
 function escapeHTML(str) {
+    if (typeof str !== 'string') {
+        throw new TypeError(`escapeHTML expects string, got ${typeof str}: ${str}`);
+    }
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
@@ -19,8 +25,13 @@ function escapeHTML(str) {
  *
  * @param {Error} error - Error object with errorType property
  * @returns {string} - HTML string with formatted error message and resolution steps
+ * @throws {TypeError} If error is not an Error object
  */
 function formatError(error) {
+    if (!(error instanceof Error) && (!error || typeof error.message !== 'string')) {
+        throw new TypeError(`formatError expects Error object, got ${typeof error}`);
+    }
+
     let message = `<strong>Error:</strong> ${escapeHTML(error.message)}`;
     let resolutionSteps = [];
 

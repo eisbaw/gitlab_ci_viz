@@ -15,10 +15,43 @@
  */
 
 /**
+ * @typedef {Object} VisGroup
+ * @property {string} id - Unique group identifier
+ * @property {string} content - Display text for group
+ * @property {string[]} [nestedGroups] - Array of nested group IDs
+ * @property {boolean} [showNested] - Whether nested groups are expanded
+ */
+
+/**
+ * @typedef {Object} VisItem
+ * @property {string} id - Unique item identifier
+ * @property {string} group - Group ID this item belongs to
+ * @property {string} content - Display text for item
+ * @property {string} start - ISO 8601 start timestamp
+ * @property {string} end - ISO 8601 end timestamp
+ * @property {string} type - Item type (e.g., 'range')
+ * @property {string} className - CSS class name for styling
+ * @property {string} title - Tooltip text
+ */
+
+/**
+ * @typedef {Object} TimeRangeInfo
+ * @property {string} durationLabel - Human-readable duration label
+ * @property {string} startDateStr - Formatted start date string
+ * @property {string} endDateStr - Formatted end date string
+ */
+
+/**
  * Domain Model: User
  * Represents a GitLab user who triggered pipelines
  */
 class User {
+    /**
+     * Create a User instance
+     * @param {number} id - User ID
+     * @param {string} username - Username
+     * @param {string} [name] - Display name (defaults to username)
+     */
     constructor(id, username, name) {
         this.id = id;
         this.username = username;
@@ -26,6 +59,11 @@ class User {
         this.pipelines = [];
     }
 
+    /**
+     * Add a pipeline to this user
+     * @param {Pipeline} pipeline - Pipeline to add
+     * @returns {void}
+     */
     addPipeline(pipeline) {
         this.pipelines.push(pipeline);
     }
@@ -33,6 +71,7 @@ class User {
     /**
      * Get display name for UI
      * Prioritizes human-readable name over username
+     * @returns {string} Display name
      */
     getDisplayName() {
         return this.name || this.username || `User ${this.id}`;
@@ -44,6 +83,18 @@ class User {
  * Represents a CI/CD pipeline execution
  */
 class Pipeline {
+    /**
+     * Create a Pipeline instance
+     * @param {number} id - Pipeline ID
+     * @param {number} projectId - Project ID
+     * @param {string} status - Pipeline status
+     * @param {string} createdAt - ISO 8601 creation timestamp
+     * @param {string|null} startedAt - ISO 8601 start timestamp
+     * @param {string|null} finishedAt - ISO 8601 finish timestamp
+     * @param {number|null} duration - Duration in seconds
+     * @param {string} webUrl - URL to pipeline page
+     * @param {User} user - User who triggered the pipeline
+     */
     constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, user) {
         // Validate required fields
         if (!id || !projectId || !status || !createdAt) {
@@ -83,6 +134,11 @@ class Pipeline {
         return !isNaN(new Date(ts).getTime());
     }
 
+    /**
+     * Add a job to this pipeline
+     * @param {Job} job - Job to add
+     * @returns {void}
+     */
     addJob(job) {
         this.jobs.push(job);
     }
@@ -90,6 +146,7 @@ class Pipeline {
     /**
      * Get effective start time for timeline
      * Falls back to created_at if started_at is null (pending pipelines)
+     * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
         return this.startedAt || this.createdAt;
@@ -103,6 +160,7 @@ class Pipeline {
      * Note: Pending pipelines are shown with a 5-minute bar to ensure visibility
      * on the timeline without cluttering it with long-pending items. This is a
      * display concern - the actual pipeline state is preserved.
+     * @returns {string} ISO 8601 timestamp
      */
     getEndTime() {
         if (this.finishedAt) {
@@ -125,6 +183,7 @@ class Pipeline {
 
     /**
      * Check if pipeline is currently active (running or pending)
+     * @returns {boolean} True if pipeline is active
      */
     isActive() {
         return !this.finishedAt;
@@ -136,6 +195,19 @@ class Pipeline {
  * Represents individual job within a pipeline
  */
 class Job {
+    /**
+     * Create a Job instance
+     * @param {number} id - Job ID
+     * @param {string} name - Job name
+     * @param {string} stage - Stage name
+     * @param {string} status - Job status
+     * @param {string} createdAt - ISO 8601 creation timestamp
+     * @param {string|null} startedAt - ISO 8601 start timestamp
+     * @param {string|null} finishedAt - ISO 8601 finish timestamp
+     * @param {number|null} duration - Duration in seconds
+     * @param {string} webUrl - URL to job page
+     * @param {number} pipelineId - Parent pipeline ID
+     */
     constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId) {
         // Validate required fields
         if (!id || !name || !status || !createdAt || !pipelineId) {
@@ -178,6 +250,7 @@ class Job {
     /**
      * Get effective start time for timeline
      * Falls back to created_at if started_at is null (pending jobs)
+     * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
         return this.startedAt || this.createdAt;
@@ -191,6 +264,7 @@ class Job {
      * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
      * since jobs are typically smaller units that start quickly. This helps
      * distinguish pending jobs from pending pipelines visually.
+     * @returns {string} ISO 8601 timestamp
      */
     getEndTime() {
         if (this.finishedAt) {
@@ -213,6 +287,7 @@ class Job {
 
     /**
      * Check if job is currently active (running or pending)
+     * @returns {boolean} True if job is active
      */
     isActive() {
         return !this.finishedAt;
@@ -305,6 +380,8 @@ class DataTransformer {
 
     /**
      * Format relative time (e.g., "2 hours ago", "3 days ago")
+     * @param {string|Date} date - Date to format
+     * @returns {string} Human-readable relative time
      */
     static formatRelativeTime(date) {
         const now = new Date();
@@ -382,6 +459,8 @@ class DataTransformer {
 
     /**
      * Format duration in human-readable format
+     * @param {number|null} seconds - Duration in seconds
+     * @returns {string} Human-readable duration (e.g., "1h 23m 45s")
      */
     static formatDuration(seconds) {
         if (!seconds || seconds < 0) return 'N/A';
@@ -401,6 +480,8 @@ class DataTransformer {
 
     /**
      * Create tooltip for pipeline item
+     * @param {Pipeline} pipeline - Pipeline domain object
+     * @returns {string} Tooltip text
      */
     static createPipelineTooltip(pipeline) {
         const parts = [];
@@ -426,6 +507,8 @@ class DataTransformer {
 
     /**
      * Create tooltip for job item
+     * @param {Job} job - Job domain object
+     * @returns {string} Tooltip text
      */
     static createJobTooltip(job) {
         const parts = [];
@@ -453,12 +536,8 @@ class DataTransformer {
     /**
      * Transform domain model to vis.js Timeline format
      *
-     * @param {Array<User>} users - Array of User domain objects
-     * @returns {Object} - Object with groups and items arrays for vis.js Timeline:
-     *   {
-     *     groups: [{id, content, nestedGroups}],
-     *     items: [{id, group, content, start, end, type, className}]
-     *   }
+     * @param {User[]} users - Array of User domain objects
+     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
      */
     static transformToVisFormat(users) {
         const groups = [];
@@ -538,10 +617,10 @@ class DataTransformer {
     /**
      * Main transformation pipeline: GitLab API → vis.js format
      *
-     * @param {Array} pipelines - Array of pipeline objects from GitLab API
-     * @param {Array} jobs - Array of job objects from GitLab API
-     * @returns {Object} - Object with groups and items arrays for vis.js Timeline
-     * @throws {Error} - If no users/pipelines found (indicates API issue or wrong time range)
+     * @param {Object[]} pipelines - Array of pipeline objects from GitLab API
+     * @param {Object[]} jobs - Array of job objects from GitLab API
+     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
+     * @throws {Error} If no users/pipelines found (indicates API issue or wrong time range)
      */
     static transform(pipelines, jobs) {
         console.log(`Transforming ${pipelines.length} pipelines and ${jobs.length} jobs`);

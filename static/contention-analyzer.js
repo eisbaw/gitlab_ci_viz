@@ -7,14 +7,32 @@
  * Used for US-2: Help DevOps engineers identify runner capacity bottlenecks
  */
 
+/**
+ * @typedef {Object} ContentionPeriod
+ * @property {Date} start - Start time of contention period
+ * @property {Date} end - End time of contention period
+ * @property {number} count - Number of concurrent pipelines
+ * @property {string} level - Contention level: 'low', 'medium', 'high', 'critical'
+ */
+
+/**
+ * @typedef {Object} VisBackgroundItem
+ * @property {string} id - Unique identifier for vis.js item
+ * @property {Date} start - Start time of background item
+ * @property {Date} end - End time of background item
+ * @property {string} type - Item type (always 'background')
+ * @property {string} className - CSS class name for styling
+ * @property {string} title - Tooltip text
+ */
+
 const ContentionAnalyzer = (function() {
     'use strict';
 
     /**
      * Calculate contention periods from pipeline data
      *
-     * @param {Array} pipelines - Array of Pipeline domain objects
-     * @returns {Array} Array of contention period objects with {start, end, count, level}
+     * @param {Array<Pipeline>} pipelines - Array of Pipeline domain objects
+     * @returns {ContentionPeriod[]} Array of contention period objects
      */
     function calculateContentionPeriods(pipelines) {
         if (!pipelines || pipelines.length === 0) {
@@ -182,8 +200,8 @@ const ContentionAnalyzer = (function() {
     /**
      * Convert contention periods to vis.js background items
      *
-     * @param {Array} contentionPeriods - Array from calculateContentionPeriods()
-     * @returns {Array} Array of vis.js background item objects
+     * @param {ContentionPeriod[]} contentionPeriods - Array from calculateContentionPeriods()
+     * @returns {VisBackgroundItem[]} Array of vis.js background item objects
      */
     function toVisBackgroundItems(contentionPeriods) {
         return contentionPeriods.map((period, index) => {

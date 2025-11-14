@@ -13,12 +13,17 @@ const LogLevel = {
 };
 
 class Logger {
+    /**
+     * Create a Logger instance
+     * @param {number} [minLevel=LogLevel.INFO] - Minimum log level to display
+     */
     constructor(minLevel = LogLevel.INFO) {
         this.minLevel = minLevel;
     }
 
     /**
      * Format timestamp consistently with Python backend
+     * @returns {string} Formatted timestamp string (YYYY-MM-DD HH:MM:SS)
      */
     _formatTimestamp() {
         const now = new Date();
@@ -33,6 +38,11 @@ class Logger {
 
     /**
      * Internal logging function
+     * @param {number} level - Log level number
+     * @param {string} levelName - Log level name for display
+     * @param {string} message - Log message
+     * @param {*} [context=null] - Optional context object to log
+     * @returns {void}
      */
     _log(level, levelName, message, context = null) {
         if (level < this.minLevel) {
@@ -59,6 +69,9 @@ class Logger {
 
     /**
      * Log debug-level message (verbose details for development)
+     * @param {string} message - Log message
+     * @param {*} [context=null] - Optional context object to log
+     * @returns {void}
      */
     debug(message, context = null) {
         this._log(LogLevel.DEBUG, 'DEBUG', message, context);
@@ -66,6 +79,9 @@ class Logger {
 
     /**
      * Log info-level message (normal operational messages)
+     * @param {string} message - Log message
+     * @param {*} [context=null] - Optional context object to log
+     * @returns {void}
      */
     info(message, context = null) {
         this._log(LogLevel.INFO, 'INFO', message, context);
@@ -73,6 +89,9 @@ class Logger {
 
     /**
      * Log warning-level message (potential issues)
+     * @param {string} message - Log message
+     * @param {*} [context=null] - Optional context object to log
+     * @returns {void}
      */
     warn(message, context = null) {
         this._log(LogLevel.WARN, 'WARN', message, context);
@@ -80,6 +99,9 @@ class Logger {
 
     /**
      * Log error-level message (errors requiring attention)
+     * @param {string} message - Log message
+     * @param {*} [context=null] - Optional context object to log
+     * @returns {void}
      */
     error(message, context = null) {
         this._log(LogLevel.ERROR, 'ERROR', message, context);
@@ -87,6 +109,8 @@ class Logger {
 
     /**
      * Set minimum log level
+     * @param {number} level - Minimum log level to display
+     * @returns {void}
      */
     setLevel(level) {
         this.minLevel = level;

@@ -842,6 +842,82 @@ When reporting issues, include:
 
 ## Development
 
+### Code Style Guide
+
+#### JavaScript Type Annotations
+
+All JavaScript modules use JSDoc type annotations to provide type safety without TypeScript. This enables IDE autocomplete, catches type errors before runtime, and serves as inline documentation.
+
+**Required Annotations:**
+
+1. **All public functions** must have `@param` and `@return` annotations:
+   ```javascript
+   /**
+    * Format duration in human-readable format
+    * @param {number|null} seconds - Duration in seconds
+    * @returns {string} Human-readable duration (e.g., "1h 23m 45s")
+    */
+   static formatDuration(seconds) {
+       // implementation
+   }
+   ```
+
+2. **Complex objects** must have `@typedef` definitions:
+   ```javascript
+   /**
+    * @typedef {Object} ContentionPeriod
+    * @property {Date} start - Start time of contention period
+    * @property {Date} end - End time of contention period
+    * @property {number} count - Number of concurrent pipelines
+    * @property {string} level - Contention level: 'low', 'medium', 'high', 'critical'
+    */
+   ```
+
+3. **Class constructors** must document all parameters:
+   ```javascript
+   /**
+    * Create a Pipeline instance
+    * @param {number} id - Pipeline ID
+    * @param {number} projectId - Project ID
+    * @param {string} status - Pipeline status
+    */
+   constructor(id, projectId, status) {
+       // implementation
+   }
+   ```
+
+**Type Notation:**
+- Optional parameters: `@param {string} [name]` or `@param {string} [name=default]`
+- Nullable types: `@param {string|null} value`
+- Arrays: `@param {User[]} users` or `@param {Array<User>} users`
+- Objects: `@param {{groups: VisGroup[], items: VisItem[]}} data`
+- Any type: `@param {*} context`
+- Void return: `@returns {void}`
+
+**Module-Level Documentation:**
+
+Each module should have a file-level comment describing its purpose and exports:
+```javascript
+/**
+ * Data Transformer Module
+ *
+ * Transforms GitLab API responses into domain model and vis.js Timeline format.
+ *
+ * Exports:
+ * - User (class)
+ * - Pipeline (class)
+ * - Job (class)
+ * - DataTransformer (class with static methods)
+ */
+```
+
+**Benefits:**
+- IDE autocomplete and IntelliSense
+- Early error detection (wrong types, missing parameters)
+- Self-documenting code
+- Easier refactoring (type usage tracking)
+- No build step required (unlike TypeScript)
+
 ### Development Environment
 
 This project uses Nix for reproducible development environments.
