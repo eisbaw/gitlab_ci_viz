@@ -61,3 +61,6 @@ ENV/
 # Project specific
 # Keep test fixtures
 !test/fixtures/
+
+# Cruft and stale files
+cruft/
