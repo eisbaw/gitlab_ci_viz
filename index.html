@@ -186,6 +186,28 @@
             color: white;
         }
 
+        /* Clickable items cursor */
+        .vis-item.pipeline-success,
+        .vis-item.pipeline-failed,
+        .vis-item.pipeline-running,
+        .vis-item.pipeline-pending,
+        .vis-item.pipeline-skipped,
+        .vis-item.pipeline-manual,
+        .vis-item.pipeline-created,
+        .vis-item.pipeline-canceled,
+        .vis-item.pipeline-cancelled,
+        .vis-item.job-success,
+        .vis-item.job-failed,
+        .vis-item.job-running,
+        .vis-item.job-pending,
+        .vis-item.job-skipped,
+        .vis-item.job-manual,
+        .vis-item.job-created,
+        .vis-item.job-canceled,
+        .vis-item.job-cancelled {
+            cursor: pointer;
+        }
+
         /* Resource contention background shading */
         .vis-item.contention-low {
             background-color: rgba(255, 235, 59, 0.15);
@@ -453,6 +475,39 @@
             // Create Timeline instance
             timeline = new vis.Timeline(container, items, groups, options);
 
+            // Add click event listener for opening GitLab pages
+            timeline.on('click', function(properties) {
+                // Check if an item was clicked (not just the background)
+                if (properties.item) {
+                    const itemId = properties.item;
+                    const items = timeline.itemsData;
+                    const item = items.get(itemId);
+
+                    if (!item) {
+                        console.error(`Click handler: Item ${itemId} not found in dataset. This indicates a vis.js bug or data corruption.`);
+                        return;
+                    }
+
+                    // Construct GitLab URL based on item type
+                    let url = null;
+
+                    if (item.projectId && item.pipelineId && item.jobId) {
+                        // Job item - link to job page
+                        url = `${CONFIG.gitlabUrl}/${item.projectId}/-/jobs/${item.jobId}`;
+                        console.log(`Opening job ${item.jobId} in project ${item.projectId}`);
+                    } else if (item.projectId && item.pipelineId) {
+                        // Pipeline item - link to pipeline page
+                        url = `${CONFIG.gitlabUrl}/${item.projectId}/-/pipelines/${item.pipelineId}`;
+                        console.log(`Opening pipeline ${item.pipelineId} in project ${item.projectId}`);
+                    }
+
+                    // Open URL in new tab if available
+                    if (url) {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                    }
+                }
+            });
+
             console.log('Timeline initialized successfully');
         }
 
@@ -667,7 +722,7 @@
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
                 const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
-                // Step 5: Enrich pipeline items with project names
+                // Step 5: Enrich pipeline items with project names and job items with project context
                 const enrichedItems = transformed.items.map(item => {
                     // Check if this is a pipeline item (not a job item)
                     if (item.id.startsWith('pipeline-item-')) {
@@ -700,11 +755,32 @@
                             ...item,
                             content: `${project.name} #${pipeline.id}`,
                             title: enrichedTooltip,
-                            style: `border-left: 4px solid ${projectColor};`
+                            style: `border-left: 4px solid ${projectColor};`,
+                            projectId: pipeline.project_id,  // Store for URL construction
+                            pipelineId: pipeline.id
                         };
                     }
 
-                    // Return non-pipeline items unchanged
+                    // Check if this is a job item
+                    if (item.id.startsWith('job-item-')) {
+                        const jobId = parseInt(item.id.replace('job-item-', ''), 10);
+
+                        // Find the job in all pipelines
+                        for (const pipeline of pipelines) {
+                            const job = pipeline.jobs.find(j => j.id === jobId);
+                            if (job) {
+                                // Store project and pipeline IDs for URL construction
+                                return {
+                                    ...item,
+                                    projectId: pipeline.project_id,
+                                    pipelineId: pipeline.id,
+                                    jobId: job.id
+                                };
+                            }
+                        }
+                    }
+
+                    // Return other items unchanged (e.g., background items)
                     return item;
                 });
 
