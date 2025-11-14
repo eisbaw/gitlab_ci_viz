@@ -14,8 +14,10 @@ Uses only Python standard library (no external dependencies).
 import argparse
 import json
 import logging
+import re
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
@@ -77,6 +79,77 @@ def get_gitlab_token():
     except FileNotFoundError:
         logging.error("'glab' command not found in PATH. Please install GitLab CLI.")
         sys.exit(1)
+
+
+def parse_time_spec(time_spec):
+    """Parse time specification string and convert to ISO 8601 timestamp.
+
+    Supports:
+    - Relative time: "2 days ago", "1 week ago", "3 hours ago"
+    - Absolute date: ISO 8601 format "2025-01-10", "2025-01-10T14:30:00"
+    - Special keywords: "last week"
+
+    Args:
+        time_spec: String specification of time/date
+
+    Returns:
+        ISO 8601 formatted timestamp string (e.g., "2025-01-13T10:00:00Z")
+
+    Raises:
+        ValueError: If time specification format is not supported
+    """
+    time_spec = time_spec.strip()
+
+    # Try absolute ISO 8601 date/datetime first
+    # Supports: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+    iso_date_pattern = r'^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$'
+    if re.match(iso_date_pattern, time_spec):
+        try:
+            # Parse and ensure we have a datetime object
+            if 'T' in time_spec:
+                dt = datetime.fromisoformat(time_spec)
+            else:
+                # Date only - set time to start of day
+                dt = datetime.fromisoformat(time_spec + 'T00:00:00')
+            # Return in ISO 8601 format with Z suffix
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:
+            raise ValueError(
+                f"Invalid date format: {time_spec}. "
+                "Use ISO 8601 format: 2025-01-10 or 2025-01-10T14:30:00"
+            )
+
+    # Handle "last week" special case
+    if time_spec.lower() == 'last week':
+        dt = datetime.now(timezone.utc) - timedelta(weeks=1)
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # Handle relative time: "N <unit> ago"
+    # Examples: "2 days ago", "1 week ago", "3 hours ago"
+    relative_pattern = r'^(\d+)\s+(second|minute|hour|day|week)s?\s+ago$'
+    match = re.match(relative_pattern, time_spec.lower())
+
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2)
+
+        # Map units to timedelta arguments
+        unit_mapping = {
+            'second': 'seconds',
+            'minute': 'minutes',
+            'hour': 'hours',
+            'day': 'days',
+            'week': 'weeks'
+        }
+
+        delta_kwargs = {unit_mapping[unit]: amount}
+        dt = datetime.now(timezone.utc) - timedelta(**delta_kwargs)
+        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # If we get here, format is not supported
+    raise ValueError(
+        "Time format not supported. Use: 2 days ago, 2025-01-10, or last week"
+    )
 
 
 def parse_arguments():
@@ -164,6 +237,14 @@ def validate_arguments(args):
             logging.error("Project IDs list contains empty values")
             sys.exit(1)
 
+    # Validate and parse time specification
+    try:
+        args.updated_after = parse_time_spec(args.since)
+        logging.debug(f"Parsed time spec '{args.since}' to '{args.updated_after}'")
+    except ValueError as e:
+        logging.error(str(e))
+        sys.exit(1)
+
     logging.info("CLI arguments validated successfully")
 
 
@@ -186,6 +267,7 @@ def create_config_js(token, args):
         'gitlabToken': token,
         'gitlabUrl': args.gitlab_url,
         'since': args.since,
+        'updatedAfter': args.updated_after,
         'port': args.port
     }
 

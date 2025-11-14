@@ -16,6 +16,124 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import serve
 
 
+class TestTimeSpecParsing(unittest.TestCase):
+    """Test time specification parsing."""
+
+    def test_parse_absolute_date_only(self):
+        """Test parsing ISO 8601 date (YYYY-MM-DD)."""
+        result = serve.parse_time_spec('2025-01-10')
+        self.assertEqual(result, '2025-01-10T00:00:00Z')
+
+    def test_parse_absolute_datetime(self):
+        """Test parsing ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS)."""
+        result = serve.parse_time_spec('2025-01-10T14:30:00')
+        self.assertEqual(result, '2025-01-10T14:30:00Z')
+
+    def test_parse_absolute_date_with_whitespace(self):
+        """Test parsing with leading/trailing whitespace."""
+        result = serve.parse_time_spec('  2025-01-10  ')
+        self.assertEqual(result, '2025-01-10T00:00:00Z')
+
+    def test_parse_invalid_iso_date(self):
+        """Test that invalid ISO date raises ValueError."""
+        with self.assertRaises(ValueError) as ctx:
+            serve.parse_time_spec('2025-13-01')  # Invalid month
+        self.assertIn('Invalid date format', str(ctx.exception))
+
+    def test_parse_relative_days_ago(self):
+        """Test parsing '2 days ago'."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('2 days ago')
+        # Parse result and verify it's approximately 2 days ago
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(days=2)
+        # Allow 5 second tolerance for test execution time
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_relative_week_ago(self):
+        """Test parsing '1 week ago'."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('1 week ago')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_relative_plural_weeks(self):
+        """Test parsing '2 weeks ago' (plural form)."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('2 weeks ago')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(weeks=2)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_relative_hours_ago(self):
+        """Test parsing '3 hours ago'."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('3 hours ago')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(hours=3)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_relative_minutes_ago(self):
+        """Test parsing '30 minutes ago'."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('30 minutes ago')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(minutes=30)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_last_week_keyword(self):
+        """Test parsing 'last week' special keyword."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('last week')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_last_week_case_insensitive(self):
+        """Test that 'last week' is case insensitive."""
+        from datetime import datetime, timedelta, timezone
+        result = serve.parse_time_spec('LAST WEEK')
+        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
+        delta = abs((result_dt - expected_dt).total_seconds())
+        self.assertLess(delta, 5)
+
+    def test_parse_unsupported_format_random_text(self):
+        """Test that unsupported format raises ValueError with helpful message."""
+        with self.assertRaises(ValueError) as ctx:
+            serve.parse_time_spec('yesterday')
+        error_msg = str(ctx.exception)
+        self.assertIn('Time format not supported', error_msg)
+        self.assertIn('2 days ago', error_msg)
+        self.assertIn('2025-01-10', error_msg)
+        self.assertIn('last week', error_msg)
+
+    def test_parse_unsupported_format_invalid_relative(self):
+        """Test invalid relative format."""
+        with self.assertRaises(ValueError) as ctx:
+            serve.parse_time_spec('2 months ago')  # months not supported
+        self.assertIn('Time format not supported', str(ctx.exception))
+
+    def test_parse_unsupported_format_missing_ago(self):
+        """Test relative format without 'ago' suffix."""
+        with self.assertRaises(ValueError) as ctx:
+            serve.parse_time_spec('2 days')
+        self.assertIn('Time format not supported', str(ctx.exception))
+
+    def test_parse_unsupported_format_american_date(self):
+        """Test that American date format is not supported."""
+        with self.assertRaises(ValueError) as ctx:
+            serve.parse_time_spec('01/10/2025')
+        self.assertIn('Time format not supported', str(ctx.exception))
+
+
 class TestGitLabToken(unittest.TestCase):
     """Test GitLab token acquisition."""
 
@@ -169,6 +287,7 @@ class TestConfigGeneration(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com',
             since='2 days ago',
+            updated_after='2025-01-11T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('test-token-123', args)
@@ -177,6 +296,7 @@ class TestConfigGeneration(unittest.TestCase):
         self.assertIn('"gitlabToken": "test-token-123"', config_js)
         self.assertIn('"gitlabUrl": "https://gitlab.com"', config_js)
         self.assertIn('"since": "2 days ago"', config_js)
+        self.assertIn('"updatedAfter": "2025-01-11T10:00:00Z"', config_js)
         self.assertIn('"port": 8000', config_js)
         self.assertIn('"groupId": "12345"', config_js)
         self.assertNotIn('projectIds', config_js)
@@ -188,6 +308,7 @@ class TestConfigGeneration(unittest.TestCase):
             projects='100, 200, 300',
             gitlab_url='https://gitlab.com',
             since='2025-01-10',
+            updated_after='2025-01-10T00:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('test-token-456', args)
@@ -207,6 +328,7 @@ class TestConfigGeneration(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com/test"quote',
             since='1 day ago',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('token"with"quotes', args)
@@ -222,36 +344,45 @@ class TestArgumentValidation(unittest.TestCase):
     @patch('sys.exit')
     def test_validate_invalid_port_low(self, mock_exit):
         """Test validation rejects port below range."""
-        args = MagicMock(port=0, gitlab_url='https://gitlab.com', projects='123')
+        args = MagicMock(port=0, gitlab_url='https://gitlab.com', projects='123', since='2 days ago')
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_invalid_port_high(self, mock_exit):
         """Test validation rejects port above range."""
-        args = MagicMock(port=70000, gitlab_url='https://gitlab.com', projects='123')
+        args = MagicMock(port=70000, gitlab_url='https://gitlab.com', projects='123', since='2 days ago')
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_invalid_gitlab_url(self, mock_exit):
         """Test validation rejects invalid URL."""
-        args = MagicMock(port=8000, gitlab_url='not-a-url', projects='123')
+        args = MagicMock(port=8000, gitlab_url='not-a-url', projects='123', since='2 days ago')
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_empty_project_ids(self, mock_exit):
         """Test validation rejects empty project IDs."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='100,,200', group=None)
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='100,,200', group=None, since='2 days ago')
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     def test_validate_valid_arguments(self):
         """Test validation accepts valid arguments."""
-        args = MagicMock(port=8080, gitlab_url='https://gitlab.com', projects='100,200', group=None)
+        args = MagicMock(port=8080, gitlab_url='https://gitlab.com', projects='100,200', group=None, since='2 days ago')
         # Should not raise or exit
         serve.validate_arguments(args)
+        # Verify updated_after was set
+        self.assertTrue(hasattr(args, 'updated_after'))
+
+    @patch('sys.exit')
+    def test_validate_invalid_time_spec(self, mock_exit):
+        """Test validation rejects invalid time specification."""
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='invalid time')
+        serve.validate_arguments(args)
+        mock_exit.assert_called_once_with(1)
 
 
 class TestHTMLInjection(unittest.TestCase):
@@ -274,6 +405,7 @@ class TestHTMLInjection(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com',
             since='1 day ago',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('test-token', args)
@@ -300,6 +432,7 @@ class TestHTMLInjection(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com',
             since='1 day ago',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('test-token', args)
@@ -333,6 +466,7 @@ class TestHTMLInjection(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com',
             since='</script><script>alert("xss")</script>',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('test-token', args)
@@ -370,6 +504,7 @@ class TestHTMLInjection(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com/"; alert("xss"); "',
             since='1 day ago',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('tok"en', args)
@@ -389,6 +524,7 @@ class TestHTMLInjection(unittest.TestCase):
             projects='1,2,3',
             gitlab_url='https://gitlab.com/test&param=value',
             since='<2 days>',
+            updated_after='2025-01-11T10:00:00Z',
             port=8000
         )
         config_js = serve.create_config_js('token&key=val', args)
@@ -502,6 +638,7 @@ class TestMainFunction(unittest.TestCase):
             projects=None,
             gitlab_url='https://gitlab.com',
             since='1 day ago',
+            updated_after='2025-01-12T10:00:00Z',
             port=8000
         )
 
