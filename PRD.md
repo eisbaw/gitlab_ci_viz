@@ -210,8 +210,6 @@ gitlab_ci_viz/
 - Clear identification of pipeline overlaps and timing
 
 ## Future Enhancements (Out of Scope for MVP)
-- Filter by pipeline status
-- Search/filter by job name
 - Export timeline as image
 - Save/load custom views
 - Runner-centric view (instead of user-centric)
@@ -220,6 +218,8 @@ gitlab_ci_viz/
 
 ## Completed Beyond MVP
 - Click-through to GitLab pipeline and job pages (task-049)
+- Filter by pipeline status (task-050)
+- Search/filter by job name (task-052)
 
 ## Security Considerations
 - Token never stored on server or in browser storage (injected per session)
