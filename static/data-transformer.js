@@ -304,23 +304,41 @@ class DataTransformer {
      *
      * @param {Array} pipelines - Array of pipeline objects from GitLab API
      * @param {Array} jobs - Array of job objects from GitLab API
+     * @param {Map} projectMap - Map of project ID to project object (optional, for project-based grouping)
      * @returns {Array<User>} - Array of User domain objects with nested pipelines and jobs
      */
-    static transformToDomainModel(pipelines, jobs) {
-        // Create user map: userId -> User object
+    static transformToDomainModel(pipelines, jobs, projectMap = null) {
+        // Create user map: userId -> User object (or projectId -> User object when grouping by project)
         const userMap = new Map();
 
         // Create pipeline map: pipelineId -> Pipeline object
         const pipelineMap = new Map();
 
-        // Step 1: Process pipelines and group by user
+        // Step 1: Process pipelines and group by project (if projectMap provided) or user
         for (const apiPipeline of pipelines) {
-            // Extract user info (handle missing user gracefully)
-            const userId = apiPipeline.user?.id || 0;
-            const username = apiPipeline.user?.username || 'unknown';
-            const name = apiPipeline.user?.name || username;
+            let userId, username, name;
 
-            // Get or create user
+            if (projectMap) {
+                // Group by project instead of user
+                const project = projectMap.get(apiPipeline.project_id);
+                if (project) {
+                    userId = project.id;
+                    username = project.path || project.name;
+                    name = project.name;
+                } else {
+                    // Fallback if project not found
+                    userId = apiPipeline.project_id;
+                    username = `project-${apiPipeline.project_id}`;
+                    name = username;
+                }
+            } else {
+                // Original behavior: group by user
+                userId = apiPipeline.user?.id || 0;
+                username = apiPipeline.user?.username || 'unknown';
+                name = apiPipeline.user?.name || username;
+            }
+
+            // Get or create user (or project-as-user)
             if (!userMap.has(userId)) {
                 userMap.set(userId, new User(userId, username, name));
             }
@@ -634,7 +652,7 @@ class DataTransformer {
      * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
      * @throws {Error} If no users/pipelines found (indicates API issue or wrong time range)
      */
-    static transform(pipelines, jobs) {
+    static transform(pipelines, jobs, projectMap = null) {
         console.log(`Transforming ${pipelines.length} pipelines and ${jobs.length} jobs`);
 
         // Validate input
@@ -643,8 +661,9 @@ class DataTransformer {
         }
 
         // Step 1: Transform to domain model
-        const users = this.transformToDomainModel(pipelines, jobs);
-        console.log(`Grouped into ${users.length} users with ${users.reduce((sum, u) => sum + u.pipelines.length, 0)} pipelines`);
+        const users = this.transformToDomainModel(pipelines, jobs, projectMap);
+        const groupType = projectMap ? 'projects' : 'users';
+        console.log(`Grouped into ${users.length} ${groupType} with ${users.reduce((sum, u) => sum + u.pipelines.length, 0)} pipelines`);
 
         // Validate domain model (fail fast if transformation produced no users)
         if (!Array.isArray(users) || users.length === 0) {

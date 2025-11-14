@@ -469,7 +469,7 @@
             console.log(
                 `Applied filters: ${unfilteredPipelines.length} pipelines → ${filteredPipelines.length} filtered | ` +
                 `${jobsBeforeNameFilter} jobs → ${filteredJobs.length} filtered ` +
-                `(search: '${JobSearchState.searchTerm || '(none)}')`
+                `(search: '${JobSearchState.searchTerm || '(none)'}')`
             );
 
             return { filteredPipelines, filteredJobs };
@@ -488,10 +488,11 @@
          * Enrich timeline items with project context and metadata
          * @param {Array} items - Raw timeline items from DataTransformer
          * @param {Array} pipelines - Pipeline data to look up
+         * @param {Array} jobs - Job data to look up
          * @param {Map} projectMap - Map of project ID to project object
          * @returns {Array} Enriched items with project info and URLs
          */
-        function enrichTimelineItems(items, pipelines, projectMap) {
+        function enrichTimelineItems(items, pipelines, jobs, projectMap) {
             return items.map(item => {
                 // Enrich pipeline items
                 if (item.id.startsWith('pipeline-item-')) {
@@ -530,16 +531,15 @@
                 if (item.id.startsWith('job-item-')) {
                     const jobId = parseInt(item.id.replace('job-item-', ''), 10);
 
-                    for (const pipeline of pipelines) {
-                        const job = pipeline.jobs.find(j => j.id === jobId);
-                        if (job) {
-                            return {
-                                ...item,
-                                projectId: pipeline.project_id,
-                                pipelineId: pipeline.id,
-                                jobId: job.id
-                            };
-                        }
+                    // Find the job in the jobs array
+                    const job = jobs.find(j => j.id === jobId);
+                    if (job) {
+                        return {
+                            ...item,
+                            projectId: job.project_id,
+                            pipelineId: job.pipeline_id,
+                            jobId: job.id
+                        };
                     }
                 }
 
@@ -670,17 +670,17 @@
             // Use shared filter computation
             const { filteredPipelines, filteredJobs } = computeFilteredData();
 
-            // Transform filtered data
-            const transformed = DataTransformer.transform(filteredPipelines, filteredJobs);
+            // Transform filtered data (pass projectMap for project-based grouping)
+            const transformed = DataTransformer.transform(filteredPipelines, filteredJobs, projectMap);
 
             // Calculate contention for filtered pipelines
-            const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs);
+            const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
             const allPipelines = domainModel.flatMap(user => user.pipelines);
             const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
             const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
             // Enrich items with project information (using shared function)
-            const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, projectMap);
+            const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, filteredJobs, projectMap);
 
             // Combine with contention backgrounds
             const allItems = [...enrichedItems, ...contentionBackgrounds];
@@ -1025,29 +1025,65 @@
                 // Apply filters using shared computation function
                 const { filteredPipelines, filteredJobs } = computeFilteredData();
 
-                // Step 4: Transform to vis.js format (using filtered data)
+                // Step 4: Transform to vis.js format (using filtered data, pass projectMap for project-based grouping)
                 showLoading('Transforming data for visualization...');
-                const transformed = DataTransformer.transform(filteredPipelines, filteredJobs);
+                const transformed = DataTransformer.transform(filteredPipelines, filteredJobs, projectMap);
 
                 // Step 4a: Calculate resource contention and create background items (using filtered data)
-                const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs);
+                const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
                 const allPipelines = domainModel.flatMap(user => user.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
                 const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
                 // Step 5: Enrich pipeline items with project names and job items with project context
-                const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, projectMap);
+                const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, filteredJobs, projectMap);
 
                 // Step 6: Combine enriched items with contention backgrounds
                 const allItems = [...enrichedItems, ...contentionBackgrounds];
 
-                // Step 7: Update timeline (auto-fits to new data)
-                // Note: Window state is NOT preserved across refreshes. This is intentional -
-                // preserving viewport state across refreshed data creates misalignment and hidden state.
-                // Timeline auto-fits to show all current data.
+                // Step 7: Update timeline
                 showLoading('Rendering timeline...');
+
+                // Preserve view state during auto-refresh to avoid disrupting user experience
+                let savedWindow = null;
+                let expandedGroups = null;
+                if (isRefresh && timeline) {
+                    // Save current viewport position
+                    savedWindow = timeline.getWindow();
+
+                    // Save which groups are expanded
+                    expandedGroups = new Set();
+                    const currentGroups = timeline.groupsData.get();
+                    currentGroups.forEach(group => {
+                        if (group.showNested === true) {
+                            expandedGroups.add(group.id);
+                        }
+                    });
+                    console.log(`State preservation: saved ${expandedGroups.size} expanded groups:`, Array.from(expandedGroups));
+
+                    // Restore expansion state BEFORE setting groups
+                    if (expandedGroups && expandedGroups.size > 0) {
+                        let restoredCount = 0;
+                        transformed.groups.forEach(group => {
+                            if (expandedGroups.has(group.id)) {
+                                group.showNested = true;
+                                restoredCount++;
+                                console.log(`State preservation: restoring expansion for group ${group.id}`);
+                            }
+                        });
+                        console.log(`State preservation: restored ${restoredCount} groups out of ${expandedGroups.size} saved`);
+                    }
+                }
+
+                // Update data (groups are already configured with correct showNested state)
                 timeline.setGroups(transformed.groups);
                 timeline.setItems(allItems);
+
+                // Restore viewport position during auto-refresh
+                if (isRefresh && savedWindow) {
+                    // Restore viewport position (prevent jarring jumps)
+                    timeline.setWindow(savedWindow.start, savedWindow.end, {animation: false});
+                }
 
                 // Update last update timestamp
                 updateLastUpdateTimestamp(false);
