@@ -388,6 +388,20 @@ class TestArgumentValidation(unittest.TestCase):
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
+    @patch('sys.exit')
+    def test_validate_invalid_refresh_interval_negative(self, mock_exit):
+        """Test validation rejects negative refresh interval."""
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='1 day ago', refresh_interval=-1)
+        serve.validate_arguments(args)
+        mock_exit.assert_called_once_with(1)
+
+    @patch('sys.exit')
+    def test_validate_invalid_refresh_interval_too_high(self, mock_exit):
+        """Test validation rejects refresh interval above max."""
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='1 day ago', refresh_interval=90000)
+        serve.validate_arguments(args)
+        mock_exit.assert_called_once_with(1)
+
 
 class TestHTMLInjection(unittest.TestCase):
     r"""Test HTML template injection and XSS prevention.

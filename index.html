@@ -73,6 +73,28 @@
             margin: 5px 0;
         }
 
+        #last-update {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #495057;
+        }
+        #last-update.refreshing {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+        #last-update .timestamp {
+            font-weight: bold;
+        }
+        #last-update .refresh-indicator {
+            display: inline-block;
+            margin-left: 10px;
+            font-style: italic;
+            color: #6c757d;
+        }
+
         /* Status color palette */
         :root {
             --status-success-bg: #28a745;
@@ -153,6 +175,10 @@
 </head>
 <body>
     <h1>GitLab CI GANTT Visualizer</h1>
+    <div id="last-update" style="display: none;">
+        Last updated: <span class="timestamp">Never</span>
+        <span class="refresh-indicator"></span>
+    </div>
     <div id="status">Loading configuration...</div>
     <div id="visualization"></div>
 
@@ -170,6 +196,38 @@
 
         // Auto-refresh state
         let refreshTimer = null;
+
+        /**
+         * Update last update timestamp display
+         */
+        function updateLastUpdateTimestamp(isRefreshing = false) {
+            const lastUpdateDiv = document.getElementById('last-update');
+            const timestampSpan = lastUpdateDiv.querySelector('.timestamp');
+            const refreshIndicator = lastUpdateDiv.querySelector('.refresh-indicator');
+
+            // Show the timestamp div
+            lastUpdateDiv.style.display = 'block';
+
+            if (isRefreshing) {
+                lastUpdateDiv.classList.add('refreshing');
+                refreshIndicator.textContent = '(refreshing...)';
+            } else {
+                lastUpdateDiv.classList.remove('refreshing');
+                const now = new Date();
+                const dateStr = now.toLocaleDateString();
+                const timeStr = now.toLocaleTimeString();
+                timestampSpan.textContent = `${dateStr} ${timeStr}`;
+
+                // Show next refresh time if auto-refresh is enabled
+                if (CONFIG.refreshInterval && CONFIG.refreshInterval > 0) {
+                    const nextRefreshSeconds = CONFIG.refreshInterval;
+                    const nextRefreshTime = new Date(now.getTime() + nextRefreshSeconds * 1000);
+                    refreshIndicator.textContent = `(next refresh at ${nextRefreshTime.toLocaleTimeString()})`;
+                } else {
+                    refreshIndicator.textContent = '(auto-refresh disabled)';
+                }
+            }
+        }
 
         /**
          * Update status display with appropriate styling
@@ -359,6 +417,11 @@
          */
         async function fetchAndRender(isRefresh = false) {
             try {
+                // Indicate refresh is in progress
+                if (isRefresh) {
+                    updateLastUpdateTimestamp(true);
+                }
+
                 // Save current timeline window if refreshing
                 let savedWindow = null;
                 if (isRefresh && timeline) {
@@ -380,10 +443,12 @@
 
                 if (pipelines.length === 0) {
                     if (isRefresh) {
+                        // Update timestamp even when no new pipelines
+                        updateLastUpdateTimestamp(false);
+
                         // Expected: no new updates since last refresh
-                        const timeStr = new Date().toLocaleTimeString();
                         updateStatus(
-                            `<strong>No new pipelines</strong> (refreshed at ${timeStr})<br>` +
+                            `<strong>No new pipelines</strong><br>` +
                             `No pipeline updates since ${CONFIG.since}.<br>` +
                             'This is normal - the chart will update automatically when new pipelines run.',
                             'success'
@@ -451,12 +516,13 @@
                     timeline.setWindow(savedWindow.start, savedWindow.end);
                 }
 
-                // Success message with timestamp
-                const now = new Date();
-                const timeStr = now.toLocaleTimeString();
+                // Update last update timestamp
+                updateLastUpdateTimestamp(false);
+
+                // Success message
                 const actionWord = isRefresh ? 'refreshed' : 'loaded';
                 const successMessage =
-                    `<strong>Data ${actionWord} successfully</strong> at ${timeStr}<br>` +
+                    `<strong>Data ${actionWord} successfully</strong><br>` +
                     `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs<br>` +
                     `Time range: ${CONFIG.since}`;
                 updateStatus(successMessage, 'success');
