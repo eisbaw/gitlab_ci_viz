@@ -656,61 +656,6 @@ class GitLabAPIClient {
         return succeeded.flatMap(s => s.jobs);
     }
 
-    /**
-     * Parse time range string to ISO 8601 timestamp
-     *
-     * Supports relative time strings like "2 days ago", "1 week ago"
-     * and absolute dates like "2025-01-10"
-     *
-     * @param {string} timeRange - Time range string
-     * @returns {string} - ISO 8601 timestamp
-     * @throws {Error} - If timeRange is invalid or unsupported format
-     */
-    _parseTimeRange(timeRange) {
-        // Validate input exists
-        if (!timeRange) {
-            throw this._createError(
-                'ConfigurationError',
-                'CONFIG.since is not set. Provide a time range like "2 days ago" or "2025-01-10"'
-            );
-        }
-
-        // Try parsing as absolute date first
-        const absoluteDate = new Date(timeRange);
-        if (!isNaN(absoluteDate.getTime())) {
-            return absoluteDate.toISOString();
-        }
-
-        // Parse relative time strings
-        const match = timeRange.match(/^(\d+)\s+(day|days|week|weeks|hour|hours|minute|minutes)\s+ago$/i);
-        if (match) {
-            const value = parseInt(match[1], 10);
-            const unit = match[2].toLowerCase();
-
-            const now = new Date();
-            const msPerUnit = {
-                minute: 60 * 1000,
-                minutes: 60 * 1000,
-                hour: 60 * 60 * 1000,
-                hours: 60 * 60 * 1000,
-                day: 24 * 60 * 60 * 1000,
-                days: 24 * 60 * 60 * 1000,
-                week: 7 * 24 * 60 * 60 * 1000,
-                weeks: 7 * 24 * 60 * 60 * 1000
-            };
-
-            const milliseconds = value * msPerUnit[unit];
-            const targetDate = new Date(now.getTime() - milliseconds);
-            return targetDate.toISOString();
-        }
-
-        // Fail explicitly on invalid format
-        throw this._createError(
-            'InvalidTimeRangeError',
-            `Invalid time range format: "${timeRange}". ` +
-            `Use relative format like "2 days ago" or absolute date like "2025-01-10"`
-        );
-    }
 }
 
 // Export for use in other modules
