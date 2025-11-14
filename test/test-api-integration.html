@@ -281,7 +281,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
 
                 // Fetch projects
                 const projects = await client.fetchProjects();
@@ -324,7 +324,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const result = await client._requestPaginated('/projects/101/pipelines', {});
 
                 runner.assertEqual(result.length, 70, 'Should aggregate 70 pipelines (30+30+10)');
@@ -358,7 +358,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
 
                 // First call to page 2 should fail with rate limit
                 let rateLimitCaught = false;
@@ -393,7 +393,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const projects = await client.fetchProjects();
 
                 // Should get 2 projects (101 and 103 succeeded, 102 failed)
@@ -416,7 +416,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 window.CONFIG.projectIds = [103];
 
                 const projects = await client.fetchProjects();
@@ -454,7 +454,7 @@
             mock.install();
 
             try {
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 window.CONFIG.projectIds = API_FIXTURES.largeDataset_projects.map(p => p.id);
 
                 const startTime = performance.now();
@@ -488,7 +488,7 @@
             mock.install();
 
             try {
-                const client1 = new GitLabAPIClient();
+                const client1 = new GitLabAPIClient(window.CONFIG);
                 window.CONFIG.projectIds = [101];
 
                 const projects1 = await client1.fetchProjects();
@@ -496,7 +496,7 @@
                 const jobs1 = await client1.fetchJobs(pipelines1);
 
                 // Second run - should produce identical results
-                const client2 = new GitLabAPIClient();
+                const client2 = new GitLabAPIClient(window.CONFIG);
                 const projects2 = await client2.fetchProjects();
                 const pipelines2 = await client2.fetchPipelines(projects2);
                 const jobs2 = await client2.fetchJobs(pipelines2);

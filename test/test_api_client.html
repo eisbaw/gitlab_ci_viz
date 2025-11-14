@@ -88,7 +88,7 @@
         }
 
         async function runTests() {
-            const client = new GitLabAPIClient();
+            const client = new GitLabAPIClient(window.CONFIG);
 
             // Test 1: _parseTimeRange with relative time
             console.log('Test 1: Parse relative time - 2 days ago');

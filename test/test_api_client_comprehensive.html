@@ -235,7 +235,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.request('/test-endpoint');
 
                 addResult('mock-tests', 'No real network calls made', true,
@@ -265,7 +265,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.request('/test');
 
                 const passed = capturedHeaders &&
@@ -287,7 +287,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.request('/test', {
                     headers: { 'Authorization': 'Bearer malicious-token' }
                 });
@@ -320,7 +320,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.getGroupProjects('12345');
 
                 const expected = 'https://gitlab.example.com/api/v4/groups/12345/projects';
@@ -342,7 +342,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.getProjectPipelines('100', { updated_after: '2025-01-01T00:00:00Z' });
 
                 const expectedBase = 'https://gitlab.example.com/api/v4/projects/100/pipelines?';
@@ -365,7 +365,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.getPipelineJobs('200', '5678');
 
                 const expected = 'https://gitlab.example.com/api/v4/projects/200/pipelines/5678/jobs';
@@ -387,7 +387,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.request('/with-slash');
                 await client.request('without-slash');
 
@@ -416,7 +416,7 @@
                     json: async () => ({ message: 'Unauthorized' })
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 try {
                     await client.request('/test');
                     addResult('error-401-tests', '401 throws authentication error', false,
@@ -450,7 +450,7 @@
                     json: async () => ({ message: 'Forbidden - insufficient permissions' })
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 try {
                     await client.request('/test');
                     addResult('error-403-tests', '403 throws permission error', false,
@@ -485,7 +485,7 @@
                     json: async () => ({ message: 'Rate limit exceeded' })
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 try {
                     await client.request('/test');
                     addResult('error-429-tests', '429 throws rate limit error', false,
@@ -529,7 +529,7 @@
                     });
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 try {
                     await client.request('/test', {}, 100); // Short timeout for test speed
                     addResult('timeout-tests', 'Request timeout throws error', false,
@@ -564,7 +564,7 @@
                     }
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 try {
                     await client.request('/test');
                     addResult('json-parse-tests', 'Invalid JSON throws parse error', false,
@@ -599,7 +599,7 @@
                     json: async () => ({})
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const result = await client.request('/test');
 
                 const passed = result !== null && typeof result === 'object';
@@ -616,7 +616,7 @@
                     json: async () => []
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const result = await client.request('/test');
 
                 const passed = Array.isArray(result) && result.length === 0;
@@ -633,7 +633,7 @@
                     json: async () => null
                 });
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const result = await client.request('/test');
 
                 const passed = result === null;
@@ -678,7 +678,7 @@
                     return { ok: true, json: async () => ({}) };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const pipelines = await client.fetchPipelines([{ id: 100 }]);
 
                 const passed = pipelines.length === 1 && pipelines[0].id === 1;
@@ -716,7 +716,7 @@
                     return { ok: true, json: async () => ({}) };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const pipelines = await client.fetchPipelines([{ id: 200 }]);
 
                 const passed = pipelines.length === 2 &&
@@ -741,7 +741,7 @@
                     };
                 };
 
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 await client.fetchPipelines([{ id: 300 }]);
 
                 const passed = capturedUrl.includes('per_page=100');
@@ -765,7 +765,7 @@
             // Test 1: Relative time - days
             try {
                 CONFIG.since = '2 days ago';
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const parsed = client._parseTimeRange(CONFIG.since);
 
                 const now = new Date();
@@ -785,7 +785,7 @@
             // Test 2: Relative time - weeks
             try {
                 CONFIG.since = '1 week ago';
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const parsed = client._parseTimeRange(CONFIG.since);
 
                 const now = new Date();
@@ -804,7 +804,7 @@
             // Test 3: Absolute date
             try {
                 CONFIG.since = '2025-01-10';
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
                 const parsed = client._parseTimeRange(CONFIG.since);
 
                 const expected = new Date('2025-01-10').toISOString();
@@ -819,7 +819,7 @@
             // Test 4: Invalid format
             try {
                 CONFIG.since = 'invalid-date-format';
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
 
                 try {
                     client._parseTimeRange(CONFIG.since);
@@ -838,7 +838,7 @@
             // Test 5: Empty/missing time range
             try {
                 CONFIG.since = '';
-                const client = new GitLabAPIClient();
+                const client = new GitLabAPIClient(window.CONFIG);
 
                 try {
                     client._parseTimeRange(CONFIG.since);

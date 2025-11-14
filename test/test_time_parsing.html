@@ -174,7 +174,7 @@
         }
 
         async function runTests() {
-            const client = new GitLabAPIClient();
+            const client = new GitLabAPIClient(window.CONFIG);
 
             // AC #1: Valid relative times
             setSection('AC #1: Valid Relative Times');

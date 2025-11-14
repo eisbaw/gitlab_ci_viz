@@ -335,7 +335,7 @@
 
             // Initialize API client
             try {
-                apiClient = new GitLabAPIClient();
+                apiClient = new GitLabAPIClient(CONFIG);
 
                 let statusHtml = '<strong>Configuration loaded successfully:</strong><br>';
                 statusHtml += `GitLab URL: ${CONFIG.gitlabUrl}<br>`;

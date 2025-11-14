@@ -11,22 +11,50 @@
  */
 
 class GitLabAPIClient {
-    constructor() {
-        // Read configuration from injected CONFIG object
-        if (typeof CONFIG === 'undefined') {
+    /**
+     * Create a GitLab API client
+     *
+     * @param {object} config - Configuration object
+     * @param {string} config.gitlabToken - GitLab API token
+     * @param {string} config.gitlabUrl - GitLab instance URL
+     * @param {string} [config.groupId] - Optional GitLab group ID
+     * @param {Array<number>} [config.projectIds] - Optional array of project IDs
+     * @throws {Error} - If config is missing or invalid
+     */
+    constructor(config) {
+        // Validate config object is provided
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
             throw new Error('CONFIG object not found. Server configuration missing.');
         }
 
-        this.gitlabToken = CONFIG.gitlabToken;
-        this.gitlabUrl = CONFIG.gitlabUrl;
-
-        if (!this.gitlabToken) {
-            throw new Error('GitLab token not found in configuration');
+        // Validate required fields - check presence first, then type
+        if (!config.gitlabToken) {
+            throw new Error('GitLab token is missing or empty');
+        }
+        if (typeof config.gitlabToken !== 'string') {
+            throw new Error('GitLab token must be a string, got ' + typeof config.gitlabToken);
         }
 
-        if (!this.gitlabUrl) {
-            throw new Error('GitLab URL not found in configuration');
+        if (!config.gitlabUrl) {
+            throw new Error('GitLab URL is missing or empty');
         }
+        if (typeof config.gitlabUrl !== 'string') {
+            throw new Error('GitLab URL must be a string, got ' + typeof config.gitlabUrl);
+        }
+
+        // Validate optional fields if provided
+        if (config.groupId !== undefined && typeof config.groupId !== 'string') {
+            throw new Error('groupId must be a string if provided, got ' + typeof config.groupId);
+        }
+        if (config.projectIds !== undefined && !Array.isArray(config.projectIds)) {
+            throw new Error('projectIds must be an array if provided, got ' + typeof config.projectIds);
+        }
+
+        // Store config reference for methods that need groupId/projectIds
+        this.config = config;
+
+        this.gitlabToken = config.gitlabToken;
+        this.gitlabUrl = config.gitlabUrl;
 
         // Normalize URL (remove trailing slash)
         this.gitlabUrl = this.gitlabUrl.replace(/\/$/, '');
@@ -291,15 +319,15 @@ class GitLabAPIClient {
      */
     async fetchProjects() {
         // Mode 1: Fetch projects from a group
-        if (CONFIG.groupId) {
+        if (this.config.groupId) {
             try {
-                return await this.getGroupProjects(CONFIG.groupId);
+                return await this.getGroupProjects(this.config.groupId);
             } catch (error) {
                 // Wrap error with context instead of mutating
                 if (error.name === 'GitLabAPIError') {
                     const contextError = this._createError(
                         error.errorType,
-                        `Failed to fetch projects from group ${CONFIG.groupId}: ${error.message}`
+                        `Failed to fetch projects from group ${this.config.groupId}: ${error.message}`
                     );
                     contextError.originalError = error;
                     throw contextError;
@@ -309,8 +337,8 @@ class GitLabAPIClient {
         }
 
         // Mode 2: Use specific project IDs
-        if (CONFIG.projectIds && Array.isArray(CONFIG.projectIds)) {
-            if (CONFIG.projectIds.length === 0) {
+        if (this.config.projectIds && Array.isArray(this.config.projectIds)) {
+            if (this.config.projectIds.length === 0) {
                 throw this._createError(
                     'ConfigurationError',
                     'Project IDs list is empty'
@@ -318,7 +346,7 @@ class GitLabAPIClient {
             }
 
             // Fetch project details for each ID using allSettled for partial success
-            const projectPromises = CONFIG.projectIds.map(projectId =>
+            const projectPromises = this.config.projectIds.map(projectId =>
                 this.request(`/projects/${projectId}`)
             );
 
@@ -330,13 +358,13 @@ class GitLabAPIClient {
 
             const failed = results
                 .filter(r => r.status === 'rejected')
-                .map((r, idx) => ({ id: CONFIG.projectIds[idx], error: r.reason }));
+                .map((r, idx) => ({ id: this.config.projectIds[idx], error: r.reason }));
 
             // Log warnings for failed projects but continue with successes
             if (failed.length > 0) {
-                const failureRate = (failed.length / CONFIG.projectIds.length * 100).toFixed(0);
+                const failureRate = (failed.length / this.config.projectIds.length * 100).toFixed(0);
                 console.warn(
-                    `PARTIAL FAILURE: ${failed.length}/${CONFIG.projectIds.length} projects ` +
+                    `PARTIAL FAILURE: ${failed.length}/${this.config.projectIds.length} projects ` +
                     `(${failureRate}%) failed to fetch. Continuing with ${succeeded.length} projects.`
                 );
                 failed.forEach(f => console.warn(`  - Project ${f.id}: ${f.error.message}`));
@@ -346,7 +374,7 @@ class GitLabAPIClient {
             if (succeeded.length === 0) {
                 throw this._createError(
                     'ConfigurationError',
-                    `Failed to fetch all ${CONFIG.projectIds.length} configured projects`
+                    `Failed to fetch all ${this.config.projectIds.length} configured projects`
                 );
             }
 

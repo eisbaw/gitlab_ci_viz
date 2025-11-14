@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitLabAPIClient Constructor Validation Tests</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin-top: 30px;
+            border-bottom: 1px solid #666;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .pass {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .fail {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+        .summary {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GitLabAPIClient Constructor Validation Tests</h1>
+    <p>Testing task-046: CONFIG dependency explicit in GitLabAPIClient</p>
+
+    <h2>AC #1: CONFIG passed explicitly to constructor</h2>
+    <div id="ac1-tests"></div>
+
+    <h2>AC #2: Constructor validates CONFIG has required fields</h2>
+    <div id="ac2-tests"></div>
+
+    <h2>AC #3: Fails fast with clear error if CONFIG invalid</h2>
+    <div id="ac3-tests"></div>
+
+    <div class="summary" id="summary"></div>
+
+    <script src="../static/api-client.js"></script>
+    <script>
+        let totalTests = 0;
+        let passedTests = 0;
+
+        function addResult(containerId, testName, passed, details) {
+            totalTests++;
+            if (passed) passedTests++;
+
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `test-result ${passed ? 'pass' : 'fail'}`;
+            div.innerHTML = `
+                <strong>${passed ? '✓' : '✗'} ${testName}</strong><br>
+                ${details}
+            `;
+            container.appendChild(div);
+        }
+
+        function updateSummary() {
+            const summary = document.getElementById('summary');
+            const allPassed = passedTests === totalTests;
+            summary.style.backgroundColor = allPassed ? '#d4edda' : '#f8d7da';
+            summary.innerHTML = `
+                Test Summary: ${passedTests}/${totalTests} passed
+                ${allPassed ? '✓ All tests passed!' : '✗ Some tests failed'}
+            `;
+        }
+
+        async function runTests() {
+            // AC #1: CONFIG passed explicitly to constructor
+            testExplicitConfigParameter();
+
+            // AC #2: Constructor validates CONFIG has required fields
+            testRequiredFieldValidation();
+
+            // AC #3: Fails fast with clear error if CONFIG invalid
+            testFailFastBehavior();
+
+            updateSummary();
+        }
+
+        // AC #1: CONFIG passed explicitly to constructor
+        function testExplicitConfigParameter() {
+            const validConfig = {
+                gitlabToken: 'test-token-123',
+                gitlabUrl: 'https://gitlab.example.com',
+                groupId: '42'
+            };
+
+            try {
+                const client = new GitLabAPIClient(validConfig);
+                addResult('ac1-tests', 'Constructor accepts config parameter', true,
+                    'Config object passed successfully');
+            } catch (e) {
+                addResult('ac1-tests', 'Constructor accepts config parameter', false,
+                    `Unexpected error: ${e.message}`);
+            }
+
+            try {
+                const client = new GitLabAPIClient(validConfig);
+                const hasToken = client.gitlabToken === validConfig.gitlabToken;
+                const hasUrl = client.gitlabUrl === validConfig.gitlabUrl;
+                const hasConfig = client.config === validConfig;
+
+                if (hasToken && hasUrl && hasConfig) {
+                    addResult('ac1-tests', 'Constructor stores config reference', true,
+                        'Config properties stored correctly');
+                } else {
+                    addResult('ac1-tests', 'Constructor stores config reference', false,
+                        `Missing properties: token=${hasToken}, url=${hasUrl}, config=${hasConfig}`);
+                }
+            } catch (e) {
+                addResult('ac1-tests', 'Constructor stores config reference', false,
+                    `Error: ${e.message}`);
+            }
+        }
+
+        // AC #2: Constructor validates CONFIG has required fields
+        function testRequiredFieldValidation() {
+            // Test 1: Missing gitlabToken
+            try {
+                const config = {
+                    gitlabUrl: 'https://gitlab.example.com'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabToken presence', false,
+                    'Should have thrown error for missing token');
+            } catch (e) {
+                const correctError = e.message.includes('token');
+                addResult('ac2-tests', 'Validates gitlabToken presence', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 2: Missing gitlabUrl
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabUrl presence', false,
+                    'Should have thrown error for missing URL');
+            } catch (e) {
+                const correctError = e.message.includes('URL');
+                addResult('ac2-tests', 'Validates gitlabUrl presence', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 3: Invalid token type (not a string)
+            try {
+                const config = {
+                    gitlabToken: 123,
+                    gitlabUrl: 'https://gitlab.example.com'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabToken type', false,
+                    'Should have thrown error for non-string token');
+            } catch (e) {
+                const correctError = e.message.includes('string') && e.message.includes('number');
+                addResult('ac2-tests', 'Validates gitlabToken type', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 4: Invalid URL type (not a string)
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: 12345
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabUrl type', false,
+                    'Should have thrown error for non-string URL');
+            } catch (e) {
+                const correctError = e.message.includes('string') && e.message.includes('number');
+                addResult('ac2-tests', 'Validates gitlabUrl type', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 5: Empty string token
+            try {
+                const config = {
+                    gitlabToken: '',
+                    gitlabUrl: 'https://gitlab.example.com'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabToken not empty', false,
+                    'Should have thrown error for empty token');
+            } catch (e) {
+                const correctError = e.message.includes('token');
+                addResult('ac2-tests', 'Validates gitlabToken not empty', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 6: Empty string URL
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: ''
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates gitlabUrl not empty', false,
+                    'Should have thrown error for empty URL');
+            } catch (e) {
+                const correctError = e.message.includes('URL');
+                addResult('ac2-tests', 'Validates gitlabUrl not empty', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 7: Invalid groupId type (number instead of string)
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: 'https://gitlab.example.com',
+                    groupId: 123
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates groupId type if provided', false,
+                    'Should have thrown error for non-string groupId');
+            } catch (e) {
+                const correctError = e.message.includes('groupId') && e.message.includes('string');
+                addResult('ac2-tests', 'Validates groupId type if provided', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 8: Invalid projectIds type (string instead of array)
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: 'https://gitlab.example.com',
+                    projectIds: '101,102,103'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Validates projectIds type if provided', false,
+                    'Should have thrown error for non-array projectIds');
+            } catch (e) {
+                const correctError = e.message.includes('projectIds') && e.message.includes('array');
+                addResult('ac2-tests', 'Validates projectIds type if provided', correctError,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 9: Valid optional fields accepted
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: 'https://gitlab.example.com',
+                    groupId: '42'
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Accepts valid groupId', true,
+                    'Valid groupId accepted');
+            } catch (e) {
+                addResult('ac2-tests', 'Accepts valid groupId', false,
+                    `Unexpected error: ${e.message}`);
+            }
+
+            // Test 10: Valid projectIds array accepted
+            try {
+                const config = {
+                    gitlabToken: 'test-token-123',
+                    gitlabUrl: 'https://gitlab.example.com',
+                    projectIds: [101, 102, 103]
+                };
+                const client = new GitLabAPIClient(config);
+                addResult('ac2-tests', 'Accepts valid projectIds', true,
+                    'Valid projectIds array accepted');
+            } catch (e) {
+                addResult('ac2-tests', 'Accepts valid projectIds', false,
+                    `Unexpected error: ${e.message}`);
+            }
+        }
+
+        // AC #3: Fails fast with clear error if CONFIG invalid
+        function testFailFastBehavior() {
+            // Test 1: null config
+            try {
+                const client = new GitLabAPIClient(null);
+                addResult('ac3-tests', 'Rejects null config', false,
+                    'Should have thrown error for null config');
+            } catch (e) {
+                const clearMessage = e.message.includes('CONFIG');
+                addResult('ac3-tests', 'Rejects null config', clearMessage,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 2: undefined config
+            try {
+                const client = new GitLabAPIClient(undefined);
+                addResult('ac3-tests', 'Rejects undefined config', false,
+                    'Should have thrown error for undefined config');
+            } catch (e) {
+                const clearMessage = e.message.includes('CONFIG');
+                addResult('ac3-tests', 'Rejects undefined config', clearMessage,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 3: No arguments (implicit undefined)
+            try {
+                const client = new GitLabAPIClient();
+                addResult('ac3-tests', 'Rejects missing config argument', false,
+                    'Should have thrown error when no config provided');
+            } catch (e) {
+                const clearMessage = e.message.includes('CONFIG');
+                addResult('ac3-tests', 'Rejects missing config argument', clearMessage,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 4: Non-object config (string)
+            try {
+                const client = new GitLabAPIClient('invalid');
+                addResult('ac3-tests', 'Rejects non-object config (string)', false,
+                    'Should have thrown error for string config');
+            } catch (e) {
+                const clearMessage = e.message.includes('CONFIG');
+                addResult('ac3-tests', 'Rejects non-object config (string)', clearMessage,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 5: Non-object config (number)
+            try {
+                const client = new GitLabAPIClient(123);
+                addResult('ac3-tests', 'Rejects non-object config (number)', false,
+                    'Should have thrown error for number config');
+            } catch (e) {
+                const clearMessage = e.message.includes('CONFIG');
+                addResult('ac3-tests', 'Rejects non-object config (number)', clearMessage,
+                    `Error message: ${e.message}`);
+            }
+
+            // Test 6: Error messages are clear and actionable
+            try {
+                const client = new GitLabAPIClient({});
+                addResult('ac3-tests', 'Error messages are clear', false,
+                    'Should have thrown error for empty config');
+            } catch (e) {
+                const hasContext = e.message.length > 10 &&
+                                  (e.message.includes('token') || e.message.includes('URL'));
+                addResult('ac3-tests', 'Error messages are clear', hasContext,
+                    `Error message: "${e.message}" (length: ${e.message.length})`);
+            }
+
+            // Test 7: Constructor fails before any side effects
+            let sideEffectOccurred = false;
+            const originalConsoleLog = console.log;
+            console.log = () => { sideEffectOccurred = true; };
+
+            try {
+                const client = new GitLabAPIClient(null);
+                addResult('ac3-tests', 'Fails before side effects', false,
+                    'Should have thrown error immediately');
+            } catch (e) {
+                const noSideEffects = !sideEffectOccurred;
+                addResult('ac3-tests', 'Fails before side effects', noSideEffects,
+                    noSideEffects ? 'No side effects occurred' : 'Side effects detected');
+            } finally {
+                console.log = originalConsoleLog;
+            }
+        }
+
+        // Run tests on page load
+        runTests();
+    </script>
+</body>
+</html>
