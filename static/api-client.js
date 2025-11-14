@@ -42,12 +42,12 @@ class GitLabAPIClient {
             throw new Error('GitLab URL must be a string, got ' + typeof config.gitlabUrl);
         }
 
-        // Validate optional fields if provided
-        if (config.groupId !== undefined && typeof config.groupId !== 'string') {
-            throw new Error('groupId must be a string if provided, got ' + typeof config.groupId);
+        // Validate optional fields if provided (allow null)
+        if (config.groupId !== undefined && config.groupId !== null && typeof config.groupId !== 'string') {
+            throw new Error('groupId must be a string or null if provided, got ' + typeof config.groupId);
         }
-        if (config.projectIds !== undefined && !Array.isArray(config.projectIds)) {
-            throw new Error('projectIds must be an array if provided, got ' + typeof config.projectIds);
+        if (config.projectIds !== undefined && config.projectIds !== null && !Array.isArray(config.projectIds)) {
+            throw new Error('projectIds must be an array or null if provided, got ' + typeof config.projectIds);
         }
 
         // Store config reference for methods that need groupId/projectIds
@@ -539,15 +539,15 @@ class GitLabAPIClient {
             }
         }
 
-        // Validate updatedAfter is provided
-        if (!updatedAfter) {
+        // Use provided updatedAfter or fall back to config.since
+        const timestamp = updatedAfter || this.config.since;
+
+        if (!timestamp) {
             throw this._createError(
                 'ConfigurationError',
-                'updatedAfter timestamp is required'
+                'updatedAfter timestamp is required (either as parameter or in config.since)'
             );
         }
-
-        const timestamp = updatedAfter;
 
         // Fetch pipelines for all projects using allSettled for partial success
         const pipelinePromises = projects.map(project =>
