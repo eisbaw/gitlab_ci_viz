@@ -225,6 +225,56 @@
             background-color: rgba(183, 28, 28, 0.30);
             border: none;
         }
+
+        /* Filter controls */
+        #filter-controls {
+            margin-bottom: 15px;
+            padding: 12px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        #filter-controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 1em;
+            color: #495057;
+        }
+        .filter-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+        .filter-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .filter-checkbox input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+        .filter-checkbox label {
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.95em;
+        }
+        .filter-actions {
+            margin-left: auto;
+        }
+        .filter-actions button {
+            padding: 5px 12px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .filter-actions button:hover {
+            background-color: #5a6268;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -236,6 +286,35 @@
     <div id="last-update" style="display: none;">
         Last updated: <span class="timestamp">Never</span>
         <span class="refresh-indicator"></span>
+    </div>
+    <div id="filter-controls" style="display: none;">
+        <h3>Filter by Pipeline Status</h3>
+        <div class="filter-checkboxes">
+            <div class="filter-checkbox">
+                <input type="checkbox" id="filter-success" value="success" checked>
+                <label for="filter-success">Success</label>
+            </div>
+            <div class="filter-checkbox">
+                <input type="checkbox" id="filter-failed" value="failed" checked>
+                <label for="filter-failed">Failed</label>
+            </div>
+            <div class="filter-checkbox">
+                <input type="checkbox" id="filter-running" value="running" checked>
+                <label for="filter-running">Running</label>
+            </div>
+            <div class="filter-checkbox">
+                <input type="checkbox" id="filter-pending" value="pending" checked>
+                <label for="filter-pending">Pending</label>
+            </div>
+            <div class="filter-checkbox">
+                <input type="checkbox" id="filter-canceled" value="canceled" checked>
+                <label for="filter-canceled">Canceled</label>
+            </div>
+            <div class="filter-actions">
+                <button id="clear-filters">Clear All</button>
+                <button id="reset-filters">Reset</button>
+            </div>
+        </div>
     </div>
     <div id="status">Loading configuration...</div>
     <div id="visualization"></div>
@@ -255,6 +334,110 @@
 
         // Auto-refresh state
         let refreshTimer = null;
+
+        // Filter state encapsulation
+        const FilterState = {
+            active: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
+
+            reset() {
+                this.active.clear();
+                ['success', 'failed', 'running', 'pending', 'canceled'].forEach(s => this.active.add(s));
+            },
+
+            clear() {
+                this.active.clear();
+            },
+
+            has(status) {
+                return this.active.has(status);
+            },
+
+            add(status) {
+                this.active.add(status);
+            },
+
+            delete(status) {
+                this.active.delete(status);
+            }
+        };
+
+        // Store unfiltered data for re-filtering (vis.js DataSets are primary storage)
+        let unfilteredPipelines = [];
+        let unfilteredJobs = [];
+        let projectMap = new Map();
+
+        /**
+         * Normalize pipeline status to handle GitLab API inconsistencies
+         * @param {string} status - Raw status from GitLab API
+         * @returns {string} Normalized status
+         */
+        function normalizeStatus(status) {
+            return status === 'cancelled' ? 'canceled' : status;
+        }
+
+        /**
+         * Enrich timeline items with project context and metadata
+         * @param {Array} items - Raw timeline items from DataTransformer
+         * @param {Array} pipelines - Pipeline data to look up
+         * @param {Map} projectMap - Map of project ID to project object
+         * @returns {Array} Enriched items with project info and URLs
+         */
+        function enrichTimelineItems(items, pipelines, projectMap) {
+            return items.map(item => {
+                // Enrich pipeline items
+                if (item.id.startsWith('pipeline-item-')) {
+                    const pipelineId = parseInt(item.id.replace('pipeline-item-', ''), 10);
+                    const pipeline = pipelines.find(p => p.id === pipelineId);
+
+                    if (!pipeline) {
+                        throw new Error(
+                            `Data integrity error: Timeline item references unknown pipeline ${pipelineId}. ` +
+                            `This should never happen - indicates bug in DataTransformer.`
+                        );
+                    }
+
+                    const project = projectMap.get(pipeline.project_id);
+                    if (!project) {
+                        throw new Error(
+                            `Data integrity error: Pipeline ${pipelineId} references unknown project ${pipeline.project_id}. ` +
+                            `Available projects: [${Array.from(projectMap.keys()).join(', ')}]`
+                        );
+                    }
+
+                    const enrichedTooltip = `Project: ${project.name}\n${item.title}`;
+                    const projectColor = getProjectColor(project.name);
+
+                    return {
+                        ...item,
+                        content: `${project.name} #${pipeline.id}`,
+                        title: enrichedTooltip,
+                        style: `border-left: 4px solid ${projectColor};`,
+                        projectId: pipeline.project_id,
+                        pipelineId: pipeline.id
+                    };
+                }
+
+                // Enrich job items
+                if (item.id.startsWith('job-item-')) {
+                    const jobId = parseInt(item.id.replace('job-item-', ''), 10);
+
+                    for (const pipeline of pipelines) {
+                        const job = pipeline.jobs.find(j => j.id === jobId);
+                        if (job) {
+                            return {
+                                ...item,
+                                projectId: pipeline.project_id,
+                                pipelineId: pipeline.id,
+                                jobId: job.id
+                            };
+                        }
+                    }
+                }
+
+                // Return other items unchanged (e.g., background items)
+                return item;
+            });
+        }
 
         /**
          * Generate consistent color for project based on project name
@@ -276,6 +459,120 @@
             const lightness = 65;
 
             return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        }
+
+        /**
+         * Initialize filter controls event handlers
+         */
+        function initializeFilterControls() {
+            const filterControls = document.getElementById('filter-controls');
+            if (!filterControls) {
+                throw new Error('Critical initialization error: filter-controls element not found in DOM');
+            }
+
+            // Show filter controls
+            filterControls.style.display = 'block';
+
+            // Get all filter checkboxes
+            const checkboxes = filterControls.querySelectorAll('input[type="checkbox"]');
+
+            // Add change event listeners to all checkboxes
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const status = this.value;
+                    if (this.checked) {
+                        FilterState.add(status);
+                    } else {
+                        FilterState.delete(status);
+                    }
+                    console.log('Filter changed:', Array.from(FilterState.active));
+                    applyFilters();
+                });
+            });
+
+            // Clear all button - uncheck all filters
+            const clearButton = document.getElementById('clear-filters');
+            if (clearButton) {
+                clearButton.addEventListener('click', function() {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    FilterState.clear();
+                    console.log('All filters cleared');
+                    applyFilters();
+                });
+            }
+
+            // Reset button - check all filters
+            const resetButton = document.getElementById('reset-filters');
+            if (resetButton) {
+                resetButton.addEventListener('click', function() {
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = true;
+                    });
+                    FilterState.reset();
+                    console.log('Filters reset to default (all checked)');
+                    applyFilters();
+                });
+            }
+
+            console.log('Filter controls initialized');
+        }
+
+        /**
+         * Apply active filters to timeline data
+         * Re-renders timeline with filtered pipelines and their jobs
+         */
+        function applyFilters() {
+            if (!timeline || unfilteredPipelines.length === 0) {
+                console.log('No data to filter yet');
+                return;
+            }
+
+            // Filter pipelines based on active filters
+            const filteredPipelines = unfilteredPipelines.filter(pipeline => {
+                return FilterState.has(normalizeStatus(pipeline.status));
+            });
+
+            console.log(`Filtered ${unfilteredPipelines.length} pipelines to ${filteredPipelines.length}`);
+
+            // Get jobs only for filtered pipelines
+            const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
+            const filteredJobs = unfilteredJobs.filter(job =>
+                filteredPipelineIds.has(job.pipeline_id)
+            );
+
+            // Transform filtered data
+            const transformed = DataTransformer.transform(filteredPipelines, filteredJobs);
+
+            // Calculate contention for filtered pipelines
+            const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs);
+            const allPipelines = domainModel.flatMap(user => user.pipelines);
+            const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
+            const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
+
+            // Enrich items with project information (using shared function)
+            const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, projectMap);
+
+            // Combine with contention backgrounds
+            const allItems = [...enrichedItems, ...contentionBackgrounds];
+
+            // Save current window state
+            const savedWindow = timeline ? timeline.getWindow() : null;
+
+            // Update timeline
+            timeline.setGroups(transformed.groups);
+            timeline.setItems(allItems);
+
+            // Restore window if valid
+            if (savedWindow) {
+                const validationResult = validateWindowState(savedWindow, allItems);
+                if (validationResult.valid) {
+                    timeline.setWindow(validationResult.window.start, validationResult.window.end);
+                }
+            }
+
+            console.log('Filters applied successfully');
         }
 
         /**
@@ -401,6 +698,9 @@
 
             // Initialize Timeline
             initializeTimeline();
+
+            // Initialize filter controls
+            initializeFilterControls();
 
             // Fetch and render data
             fetchAndRender();
@@ -676,8 +976,8 @@
                 showLoading(loadingMsg);
                 const projects = await apiClient.fetchProjects();
 
-                // Create project map for quick lookup
-                const projectMap = new Map();
+                // Update global project map for enrichment
+                projectMap.clear();
                 projects.forEach(p => projectMap.set(p.id, p));
 
                 // Step 2: Fetch pipelines
@@ -712,77 +1012,30 @@
                 showLoading(`Fetching jobs from ${pipelines.length} pipelines...`);
                 const jobs = await apiClient.fetchJobs(pipelines);
 
-                // Step 4: Transform to vis.js format
-                showLoading('Transforming data for visualization...');
-                const transformed = DataTransformer.transform(pipelines, jobs);
+                // Store unfiltered data for re-filtering
+                unfilteredPipelines = pipelines;
+                unfilteredJobs = jobs;
 
-                // Step 4a: Calculate resource contention and create background items
-                const domainModel = DataTransformer.transformToDomainModel(pipelines, jobs);
+                // Apply filters to get the data to display
+                const filteredPipelines = pipelines.filter(pipeline => {
+                    return FilterState.has(normalizeStatus(pipeline.status));
+                });
+
+                const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
+                const filteredJobs = jobs.filter(job => filteredPipelineIds.has(job.pipeline_id));
+
+                // Step 4: Transform to vis.js format (using filtered data)
+                showLoading('Transforming data for visualization...');
+                const transformed = DataTransformer.transform(filteredPipelines, filteredJobs);
+
+                // Step 4a: Calculate resource contention and create background items (using filtered data)
+                const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs);
                 const allPipelines = domainModel.flatMap(user => user.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
                 const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
                 // Step 5: Enrich pipeline items with project names and job items with project context
-                const enrichedItems = transformed.items.map(item => {
-                    // Check if this is a pipeline item (not a job item)
-                    if (item.id.startsWith('pipeline-item-')) {
-                        const pipelineId = parseInt(item.id.replace('pipeline-item-', ''), 10);
-                        const pipeline = pipelines.find(p => p.id === pipelineId);
-
-                        if (!pipeline) {
-                            throw new Error(
-                                `Data integrity error: Timeline item references unknown pipeline ${pipelineId}. ` +
-                                `This should never happen - indicates bug in DataTransformer.`
-                            );
-                        }
-
-                        const project = projectMap.get(pipeline.project_id);
-                        if (!project) {
-                            throw new Error(
-                                `Data integrity error: Pipeline ${pipelineId} references unknown project ${pipeline.project_id}. ` +
-                                `Available projects: [${Array.from(projectMap.keys()).join(', ')}]`
-                            );
-                        }
-
-                        // Enrich tooltip with project information
-                        const enrichedTooltip = `Project: ${project.name}\n${item.title}`;
-
-                        // Generate project-specific color for visual differentiation
-                        const projectColor = getProjectColor(project.name);
-
-                        // Return enriched item (immutable)
-                        return {
-                            ...item,
-                            content: `${project.name} #${pipeline.id}`,
-                            title: enrichedTooltip,
-                            style: `border-left: 4px solid ${projectColor};`,
-                            projectId: pipeline.project_id,  // Store for URL construction
-                            pipelineId: pipeline.id
-                        };
-                    }
-
-                    // Check if this is a job item
-                    if (item.id.startsWith('job-item-')) {
-                        const jobId = parseInt(item.id.replace('job-item-', ''), 10);
-
-                        // Find the job in all pipelines
-                        for (const pipeline of pipelines) {
-                            const job = pipeline.jobs.find(j => j.id === jobId);
-                            if (job) {
-                                // Store project and pipeline IDs for URL construction
-                                return {
-                                    ...item,
-                                    projectId: pipeline.project_id,
-                                    pipelineId: pipeline.id,
-                                    jobId: job.id
-                                };
-                            }
-                        }
-                    }
-
-                    // Return other items unchanged (e.g., background items)
-                    return item;
-                });
+                const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, projectMap);
 
                 // Step 6: Combine enriched items with contention backgrounds
                 const allItems = [...enrichedItems, ...contentionBackgrounds];
