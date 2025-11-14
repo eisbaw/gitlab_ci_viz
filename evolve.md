@@ -24,7 +24,6 @@ Set a tag on the HEAD commit of name format <combined-score>-<commit-sha>.
 (We include the commit-sha in the tag name to prevent clobbering of same-scores).
 
 # Step 2: Mutate from prior top-3
-
 Look at git tags which follow naming of <combined-score->-<commit-sha>. Sort by score, then pick randomly among the top-3 highest scoring tags.
 The picked tag, is checked out -- detached HEAD is OK.
 This becomes our new HEAD.
@@ -34,4 +33,7 @@ git commit the change, giving us a new HEAD commit.
 
 Proceed to Step 1 to evaluate this new commit.
 Thus step 1 and 2 form an evolutionary feedback loop.
+
+# Help
+If the scores do not increase, it may help to go back to the baseline tag, "baseline".
 
