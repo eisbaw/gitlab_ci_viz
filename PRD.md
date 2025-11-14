@@ -216,8 +216,10 @@ gitlab_ci_viz/
 - Save/load custom views
 - Runner-centric view (instead of user-centric)
 - Stage visualization (currently skipped to reduce clutter)
-- Click-through to GitLab pipeline page
 - Responsive mobile view
+
+## Completed Beyond MVP
+- Click-through to GitLab pipeline and job pages (task-049)
 
 ## Security Considerations
 - Token never stored on server or in browser storage (injected per session)
