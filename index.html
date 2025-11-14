@@ -689,8 +689,15 @@
             // Note: Window state is NOT preserved across filter operations. This is intentional -
             // preserving viewport state across filtered data creates misalignment and hidden state.
             // Timeline auto-fits to show all current data.
-            timeline.setGroups(transformed.groups);
-            timeline.setItems(allItems);
+            // Clear existing data and add new data to the existing DataSets
+            // groupsData is a DataView wrapper, need to get underlying DataSet
+            const groupsDataSet = timeline.groupsData.getDataSet();
+            groupsDataSet.clear();
+            groupsDataSet.add(transformed.groups);
+
+            // itemsData is already a DataSet-like object with clear/add methods
+            timeline.itemsData.clear();
+            timeline.itemsData.add(allItems);
 
             console.log('Filters applied successfully');
         }
@@ -1076,8 +1083,15 @@
                 }
 
                 // Update data (groups are already configured with correct showNested state)
-                timeline.setGroups(transformed.groups);
-                timeline.setItems(allItems);
+                // Clear existing data and add new data to the existing DataSets
+                // groupsData is a DataView wrapper, need to get underlying DataSet
+                const groupsDataSet = timeline.groupsData.getDataSet();
+                groupsDataSet.clear();
+                groupsDataSet.add(transformed.groups);
+
+                // itemsData is already a DataSet-like object with clear/add methods
+                timeline.itemsData.clear();
+                timeline.itemsData.add(allItems);
 
                 // Restore viewport position during auto-refresh
                 if (isRefresh && savedWindow) {

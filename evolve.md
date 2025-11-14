@@ -17,7 +17,8 @@ Perfect score of 100.00 means that we have very high information density and ver
 Score of 30 means we do show pipelines and jobs, but lots of whitespace.
 Score of 10 means we do not show useful information by default.
 
-To evaluate kill prior server running, if any, on port 8000. Then spin up via 'just run'. Use Chrome MCP server to load localhost:8000, wait for 20 sec, take screenshot.
+To evaluate kill prior server running, if any, on port 8000. Then spin up via `nix-shell --run "just run"`. Use Chrome MCP server to load localhost:8000, wait for 30 sec, take screenshot.
+Save the screenshot under `screenshots/<commit-sha>/` folder and commit it to git.
 Read screenshot visually, review it for metrics: Clarity, Density, Clutter - and give a combined score.
 Use a sub-agent to interact with the MCP server. Use another sub-agent to review the screenshot.
 Set a tag on the HEAD commit of name format <combined-score>-<commit-sha>.

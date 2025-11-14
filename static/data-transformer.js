@@ -580,7 +580,7 @@ class DataTransformer {
                 id: userGroupId,
                 content: this.escapeHtml(user.getDisplayName()),
                 nestedGroups: [],
-                showNested: false  // Enable collapse/expand functionality
+                showNested: true  // Show nested groups by default
             };
 
             // Process each pipeline for this user
