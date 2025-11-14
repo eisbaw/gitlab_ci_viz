@@ -185,6 +185,24 @@
             border-color: var(--status-canceled-border);
             color: white;
         }
+
+        /* Resource contention background shading */
+        .vis-item.contention-low {
+            background-color: rgba(255, 235, 59, 0.15);
+            border: none;
+        }
+        .vis-item.contention-medium {
+            background-color: rgba(255, 152, 0, 0.20);
+            border: none;
+        }
+        .vis-item.contention-high {
+            background-color: rgba(244, 67, 54, 0.25);
+            border: none;
+        }
+        .vis-item.contention-critical {
+            background-color: rgba(183, 28, 28, 0.30);
+            border: none;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -205,6 +223,7 @@
     <script src="/static/error-formatter.js"></script>
     <script src="/static/api-client.js"></script>
     <script src="/static/data-transformer.js"></script>
+    <script src="/static/contention-analyzer.js"></script>
     <script>
         // Global timeline instance
         let timeline = null;
@@ -534,6 +553,12 @@
                 showLoading('Transforming data for visualization...');
                 const transformed = DataTransformer.transform(pipelines, jobs);
 
+                // Step 4a: Calculate resource contention and create background items
+                const domainModel = DataTransformer.transformToDomainModel(pipelines, jobs);
+                const allPipelines = domainModel.flatMap(user => user.pipelines);
+                const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
+                const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
+
                 // Step 5: Enrich pipeline items with project names
                 const enrichedItems = transformed.items.map(item => {
                     // Check if this is a pipeline item (not a job item)
@@ -575,10 +600,13 @@
                     return item;
                 });
 
-                // Step 6: Update timeline
+                // Step 6: Combine enriched items with contention backgrounds
+                const allItems = [...enrichedItems, ...contentionBackgrounds];
+
+                // Step 7: Update timeline
                 showLoading('Rendering timeline...');
                 timeline.setGroups(transformed.groups);
-                timeline.setItems(enrichedItems);
+                timeline.setItems(allItems);
 
                 // Restore window if refreshing
                 if (savedWindow) {

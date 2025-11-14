@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ContentionAnalyzer Integration Tests</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #ccc;
+        }
+        .test-section.pass {
+            border-left-color: #28a745;
+        }
+        .test-section.fail {
+            border-left-color: #dc3545;
+            background-color: #ffe6e6;
+        }
+        .test-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .test-result {
+            color: #666;
+            margin-top: 5px;
+        }
+        #summary {
+            background: #e8f4f8;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .error-details {
+            color: #dc3545;
+            font-size: 0.9em;
+            margin-top: 5px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>ContentionAnalyzer Integration Tests</h1>
+    <div id="summary">Running tests...</div>
+    <div id="results"></div>
+
+    <script src="../static/data-transformer.js"></script>
+    <script src="../static/contention-analyzer.js"></script>
+    <script>
+        // Test framework
+        const results = [];
+        let currentSection = null;
+
+        function test(name, fn) {
+            currentSection = {
+                name,
+                pass: false,
+                message: '',
+                error: null
+            };
+
+            try {
+                fn();
+                currentSection.pass = true;
+                currentSection.message = 'PASS';
+            } catch (error) {
+                currentSection.pass = false;
+                currentSection.message = 'FAIL';
+                currentSection.error = error.message;
+            }
+
+            results.push(currentSection);
+        }
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message || 'Assertion failed');
+            }
+        }
+
+        function assertEquals(actual, expected, message) {
+            if (actual !== expected) {
+                throw new Error(
+                    `${message || 'Assertion failed'}\nExpected: ${expected}\nActual: ${actual}`
+                );
+            }
+        }
+
+        function assertArrayLength(arr, expected, message) {
+            if (arr.length !== expected) {
+                throw new Error(
+                    `${message || 'Array length mismatch'}\nExpected: ${expected}\nActual: ${arr.length}`
+                );
+            }
+        }
+
+        // Test: Empty pipelines returns empty
+        test('Empty pipelines returns empty contention periods', () => {
+            const result = ContentionAnalyzer.calculateContentionPeriods([]);
+            assertArrayLength(result, 0, 'Should return empty array for no pipelines');
+        });
+
+        // Test: Single pipeline has no contention
+        test('Single pipeline has no contention', () => {
+            const user = { id: 1, username: 'alice', name: 'Alice' };
+            const pipeline = new Pipeline(
+                1, 100, 'success',
+                '2025-01-01T10:00:00Z', '2025-01-01T10:00:00Z', '2025-01-01T10:10:00Z',
+                600, 'http://ex.com/1', user
+            );
+
+            const result = ContentionAnalyzer.calculateContentionPeriods([pipeline]);
+            assertArrayLength(result, 0, 'Single pipeline should have no contention');
+        });
+
+        // Test: Two overlapping pipelines create contention
+        test('Two overlapping pipelines create contention period', () => {
+            const user = { id: 1, username: 'alice', name: 'Alice' };
+            const p1 = new Pipeline(
+                1, 100, 'success',
+                '2025-01-01T10:00:00Z', '2025-01-01T10:00:00Z', '2025-01-01T10:10:00Z',
+                600, 'http://ex.com/1', user
+            );
+            const p2 = new Pipeline(
+                2, 100, 'success',
+                '2025-01-01T10:05:00Z', '2025-01-01T10:05:00Z', '2025-01-01T10:15:00Z',
+                600, 'http://ex.com/2', user
+            );
+
+            const result = ContentionAnalyzer.calculateContentionPeriods([p1, p2]);
+            assertArrayLength(result, 1, 'Should create one contention period');
+            assertEquals(result[0].count, 2, 'Should have 2 concurrent pipelines');
+            assertEquals(result[0].level, 'low', 'Should be low contention');
+        });
+
+        // Test: Non-overlapping pipelines have no contention
+        test('Non-overlapping pipelines have no contention', () => {
+            const user = { id: 1, username: 'alice', name: 'Alice' };
+            const p1 = new Pipeline(
+                1, 100, 'success',
+                '2025-01-01T10:00:00Z', '2025-01-01T10:00:00Z', '2025-01-01T10:10:00Z',
+                600, 'http://ex.com/1', user
+            );
+            const p2 = new Pipeline(
+                2, 100, 'success',
+                '2025-01-01T10:10:00Z', '2025-01-01T10:10:00Z', '2025-01-01T10:20:00Z',
+                600, 'http://ex.com/2', user
+            );
+
+            const result = ContentionAnalyzer.calculateContentionPeriods([p1, p2]);
+            assertArrayLength(result, 0, 'Non-overlapping should have no contention');
+        });
+
+        // Test: Contention level categorization
+        test('Contention level: low (2-3 concurrent)', () => {
+            assertEquals(ContentionAnalyzer.getContentionLevel(2), 'low');
+            assertEquals(ContentionAnalyzer.getContentionLevel(3), 'low');
+        });
+
+        test('Contention level: medium (3-4 concurrent)', () => {
+            assertEquals(ContentionAnalyzer.getContentionLevel(4), 'medium');
+        });
+
+        test('Contention level: high (5-7 concurrent)', () => {
+            assertEquals(ContentionAnalyzer.getContentionLevel(5), 'high');
+            assertEquals(ContentionAnalyzer.getContentionLevel(7), 'high');
+        });
+
+        test('Contention level: critical (8+ concurrent)', () => {
+            assertEquals(ContentionAnalyzer.getContentionLevel(8), 'critical');
+            assertEquals(ContentionAnalyzer.getContentionLevel(20), 'critical');
+        });
+
+        // Test: Multiple concurrent pipelines
+        test('Multiple concurrent pipelines create high contention', () => {
+            const user = { id: 1, username: 'alice', name: 'Alice' };
+            const pipelines = [];
+
+            // Create 6 overlapping pipelines
+            for (let i = 1; i <= 6; i++) {
+                pipelines.push(new Pipeline(
+                    i, 100, 'success',
+                    '2025-01-01T10:00:00Z', '2025-01-01T10:00:00Z', '2025-01-01T10:10:00Z',
+                    600, `http://ex.com/${i}`, user
+                ));
+            }
+
+            const result = ContentionAnalyzer.calculateContentionPeriods(pipelines);
+            assertArrayLength(result, 1, 'Should create one contention period');
+            assertEquals(result[0].count, 6, 'Should have 6 concurrent pipelines');
+            assertEquals(result[0].level, 'high', 'Should be high contention');
+        });
+
+        // Test: Vis.js background item conversion
+        test('Contention periods convert to vis.js background items', () => {
+            const periods = [
+                {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T10:10:00Z'),
+                    count: 3,
+                    level: 'medium'
+                }
+            ];
+
+            const result = ContentionAnalyzer.toVisBackgroundItems(periods);
+            assertArrayLength(result, 1, 'Should create one background item');
+            assertEquals(result[0].type, 'background', 'Should be background type');
+            assertEquals(result[0].className, 'contention-medium', 'Should have correct class');
+            assert(result[0].title.includes('3 concurrent'), 'Title should mention count');
+        });
+
+        // Test: Empty periods returns empty background items
+        test('Empty periods returns empty background items', () => {
+            const result = ContentionAnalyzer.toVisBackgroundItems([]);
+            assertArrayLength(result, 0, 'Should return empty array');
+        });
+
+        // Test: Multiple periods get unique IDs
+        test('Multiple contention periods get unique IDs', () => {
+            const periods = [
+                {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T10:10:00Z'),
+                    count: 2,
+                    level: 'low'
+                },
+                {
+                    start: new Date('2025-01-01T11:00:00Z'),
+                    end: new Date('2025-01-01T11:10:00Z'),
+                    count: 5,
+                    level: 'high'
+                }
+            ];
+
+            const result = ContentionAnalyzer.toVisBackgroundItems(periods);
+            assertArrayLength(result, 2, 'Should create two background items');
+            assertEquals(result[0].id, 'contention-0', 'First should have ID contention-0');
+            assertEquals(result[1].id, 'contention-1', 'Second should have ID contention-1');
+        });
+
+        // Render results
+        function renderResults() {
+            const passed = results.filter(r => r.pass).length;
+            const failed = results.filter(r => !r.pass).length;
+
+            document.getElementById('summary').innerHTML =
+                `Total: ${results.length} | Passed: ${passed} | Failed: ${failed}`;
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = results.map(r => `
+                <div class="test-section ${r.pass ? 'pass' : 'fail'}">
+                    <div class="test-title">${r.name}</div>
+                    <div class="test-result">${r.message}</div>
+                    ${r.error ? `<div class="error-details">${r.error}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        renderResults();
+    </script>
+</body>
+</html>
