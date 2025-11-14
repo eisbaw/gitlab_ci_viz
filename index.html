@@ -73,6 +73,21 @@
             margin: 5px 0;
         }
 
+        #time-range-label {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #d1ecf1;
+            border-left: 4px solid #0c5460;
+            border-radius: 4px;
+            font-size: 0.95em;
+            color: #0c5460;
+            font-weight: bold;
+        }
+        #time-range-label .time-range {
+            font-weight: normal;
+            color: #155724;
+        }
+
         #last-update {
             margin-bottom: 10px;
             padding: 8px;
@@ -175,6 +190,9 @@
 </head>
 <body>
     <h1>GitLab CI GANTT Visualizer</h1>
+    <div id="time-range-label" style="display: none;">
+        Activity Window: <span class="time-range">Loading...</span>
+    </div>
     <div id="last-update" style="display: none;">
         Last updated: <span class="timestamp">Never</span>
         <span class="refresh-indicator"></span>
@@ -196,6 +214,24 @@
 
         // Auto-refresh state
         let refreshTimer = null;
+
+        /**
+         * Update time range label to show activity window
+         * Uses DataTransformer.formatTimeRange() for business logic
+         */
+        function updateTimeRangeLabel() {
+            const timeRangeDiv = document.getElementById('time-range-label');
+            const timeRangeSpan = timeRangeDiv.querySelector('.time-range');
+
+            // Show the time range div
+            timeRangeDiv.style.display = 'block';
+
+            // Use DataTransformer for time range calculation (fail-fast on invalid input)
+            const { durationLabel, startDateStr, endDateStr } =
+                DataTransformer.formatTimeRange(CONFIG.updatedAfter);
+
+            timeRangeSpan.textContent = `${durationLabel}: ${startDateStr} - ${endDateStr}`;
+        }
 
         /**
          * Update last update timestamp display
@@ -296,6 +332,9 @@
             const statusDiv2 = document.getElementById('status');
             statusDiv2.innerHTML += 'vis.js library: ✓ Loaded<br>';
             statusDiv2.innerHTML += 'DataTransformer: ✓ Loaded';
+
+            // Update time range label
+            updateTimeRangeLabel();
 
             // Initialize Timeline
             initializeTimeline();
@@ -518,6 +557,9 @@
 
                 // Update last update timestamp
                 updateLastUpdateTimestamp(false);
+
+                // Update time range label (refresh current time)
+                updateTimeRangeLabel();
 
                 // Success message
                 const actionWord = isRefresh ? 'refreshed' : 'loaded';

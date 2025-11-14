@@ -302,6 +302,153 @@ class DataTransformer {
     }
 
     /**
+     * Format relative time (e.g., "2 hours ago", "3 days ago")
+     */
+    static formatRelativeTime(date) {
+        const now = new Date();
+        const diffMs = now - new Date(date);
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+
+        if (diffSec < 60) {
+            return 'just now';
+        } else if (diffMin < 60) {
+            return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+        } else if (diffHour < 24) {
+            return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+        } else if (diffDay < 7) {
+            return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+        } else {
+            const diffWeek = Math.floor(diffDay / 7);
+            return `${diffWeek} week${diffWeek !== 1 ? 's' : ''} ago`;
+        }
+    }
+
+    /**
+     * Format time range for activity window display
+     *
+     * @param {string} startTimestamp - ISO 8601 timestamp for range start
+     * @param {Date} endDate - End date (defaults to now)
+     * @returns {Object} - Object with {durationLabel, startDateStr, endDateStr}
+     * @throws {Error} - If startTimestamp is invalid
+     */
+    static formatTimeRange(startTimestamp, endDate = new Date()) {
+        // Validate input
+        const startDate = new Date(startTimestamp);
+        if (isNaN(startDate.getTime())) {
+            throw new Error(
+                `Invalid start timestamp: "${startTimestamp}". ` +
+                `Expected ISO 8601 format (e.g., "2025-01-13T10:00:00Z"). ` +
+                `This indicates a configuration error.`
+            );
+        }
+
+        // Format dates for display
+        const startDateStr = startDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: startDate.getFullYear() !== endDate.getFullYear() ? 'numeric' : undefined
+        });
+        const endDateStr = endDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric'
+        });
+
+        // Calculate duration
+        const durationMs = endDate - startDate;
+        const durationDays = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+
+        let durationLabel;
+        if (durationDays < 1) {
+            const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+            durationLabel = `Last ${durationHours} hour${durationHours !== 1 ? 's' : ''}`;
+        } else if (durationDays < 7) {
+            durationLabel = `Last ${durationDays} day${durationDays !== 1 ? 's' : ''}`;
+        } else {
+            const durationWeeks = Math.floor(durationDays / 7);
+            durationLabel = `Last ${durationWeeks} week${durationWeeks !== 1 ? 's' : ''}`;
+        }
+
+        return {
+            durationLabel,
+            startDateStr,
+            endDateStr
+        };
+    }
+
+    /**
+     * Format duration in human-readable format
+     */
+    static formatDuration(seconds) {
+        if (!seconds || seconds < 0) return 'N/A';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
+    }
+
+    /**
+     * Create tooltip for pipeline item
+     */
+    static createPipelineTooltip(pipeline) {
+        const parts = [];
+        parts.push(`Pipeline #${pipeline.id}`);
+        parts.push(`Status: ${pipeline.status}`);
+
+        // Show relative time for start
+        if (pipeline.startedAt) {
+            const relativeTime = this.formatRelativeTime(pipeline.startedAt);
+            parts.push(`Started: ${relativeTime}`);
+        } else {
+            const relativeTime = this.formatRelativeTime(pipeline.createdAt);
+            parts.push(`Created: ${relativeTime}`);
+        }
+
+        // Show duration if available
+        if (pipeline.duration) {
+            parts.push(`Duration: ${this.formatDuration(pipeline.duration)}`);
+        }
+
+        return parts.join('\n');
+    }
+
+    /**
+     * Create tooltip for job item
+     */
+    static createJobTooltip(job) {
+        const parts = [];
+        parts.push(`Job: ${job.name}`);
+        parts.push(`Stage: ${job.stage}`);
+        parts.push(`Status: ${job.status}`);
+
+        // Show relative time for start
+        if (job.startedAt) {
+            const relativeTime = this.formatRelativeTime(job.startedAt);
+            parts.push(`Started: ${relativeTime}`);
+        } else {
+            const relativeTime = this.formatRelativeTime(job.createdAt);
+            parts.push(`Created: ${relativeTime}`);
+        }
+
+        // Show duration if available
+        if (job.duration) {
+            parts.push(`Duration: ${this.formatDuration(job.duration)}`);
+        }
+
+        return parts.join('\n');
+    }
+
+    /**
      * Transform domain model to vis.js Timeline format
      *
      * @param {Array<User>} users - Array of User domain objects
@@ -347,7 +494,8 @@ class DataTransformer {
                     start: pipeline.getStartTime(),
                     end: pipeline.getEndTime(),
                     type: 'range',
-                    className: `pipeline-${pipeline.status}`
+                    className: `pipeline-${pipeline.status}`,
+                    title: this.createPipelineTooltip(pipeline)
                 };
                 items.push(pipelineItem);
 
@@ -371,7 +519,8 @@ class DataTransformer {
                         start: job.getStartTime(),
                         end: job.getEndTime(),
                         type: 'range',
-                        className: `job-${job.status}`
+                        className: `job-${job.status}`,
+                        title: this.createJobTooltip(job)
                     };
                     items.push(jobItem);
                 }
