@@ -27,18 +27,41 @@ This tool provides CI/CD Activity Intelligence by transforming GitLab's project-
 
 ### Prerequisites
 
-1. **Nix package manager** (recommended for reproducible environment)
-   ```bash
-   # Install Nix (if not already installed)
-   curl -L https://nixos.org/nix/install | sh
-   ```
+Before installing, verify you have the following:
 
-2. **GitLab CLI (`glab`)** - Required for authentication
-   - Included in nix-shell
-   - Or install manually: https://gitlab.com/gitlab-org/cli
+#### Required
 
-3. **Python 3.8+** (if not using Nix)
-   - Backend uses only Python standard library (no pip dependencies)
+1. **Python 3.8 or later**
+   - Check your version:
+     ```bash
+     python3 --version
+     ```
+   - Must show Python 3.8.0 or higher
+   - The backend uses only Python standard library (no pip dependencies required!)
+
+2. **GitLab CLI (`glab`)** - Version 1.30.0 or later
+   - Required for GitLab authentication token management
+   - Will be automatically installed if using Nix (see setup below)
+   - Manual installation: https://gitlab.com/gitlab-org/cli
+
+3. **GitLab Account** with API access
+   - Personal access token (see [First-Run Setup](#first-run-setup-gitlab-authentication) for required scopes)
+   - Or existing `glab` authentication
+
+4. **Modern web browser**
+   - Any browser with ES6+ JavaScript support
+   - Chrome 60+, Firefox 60+, Safari 12+, Edge 79+
+   - Required for vis.js Timeline rendering
+
+#### Optional but Recommended
+
+5. **Nix package manager** - For reproducible development environment
+   - Automatically provides correct Python, glab, and all dev tools
+   - Install Nix:
+     ```bash
+     curl -L https://nixos.org/nix/install | sh
+     ```
+   - **Why Nix?** Guarantees consistent versions across all developers without version conflicts
 
 ### Setup
 
@@ -51,41 +74,165 @@ cd gitlab_ci_viz
 
 # Enter development environment (automatically installs all dependencies)
 nix-shell
+# This provides: Python 3.12.8, glab 1.51.0, pytest, just
 
-# Authenticate with GitLab
+# Authenticate with GitLab (first-run only)
 glab auth login
 
 # You're ready to use the tool
 ```
 
-#### Option 2: Without Nix
+#### Option 2: Without Nix (Manual Setup)
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd gitlab_ci_viz
 
-# Install glab CLI manually
-# See: https://gitlab.com/gitlab-org/cli
-
-# Authenticate with GitLab
-glab auth login
-
-# Ensure Python 3.8+ is installed
+# Verify Python version (must be 3.8+)
 python3 --version
+
+# Install glab CLI
+# macOS:
+brew install glab
+
+# Linux (see https://gitlab.com/gitlab-org/cli for distribution-specific instructions):
+# - Debian/Ubuntu: Download .deb from releases
+# - Fedora/RHEL: Download .rpm from releases
+# - Arch: yay -S gitlab-glab
+# - Or download binary directly
+
+# Verify glab installation
+glab --version
+
+# Authenticate with GitLab (first-run only)
+glab auth login
 
 # You're ready to use the tool (no pip install needed!)
 ```
 
-### Verify Installation
+### First-Run Setup: GitLab Authentication
+
+The tool requires a GitLab authentication token to access the API. The `glab` CLI manages this for you.
+
+#### Step 1: Authenticate with GitLab
 
 ```bash
-# Check that glab authentication works
-glab auth status
-
-# Run the help command
-python serve.py --help
+glab auth login
 ```
+
+**Note**: `glab auth login` is idempotent - running it multiple times will re-authenticate safely. Your previous token will be replaced.
+
+**Security Note**: Your GitLab token will be:
+- Injected into HTML served to your browser (localhost only)
+- Visible in browser DevTools and page source
+- NOT persisted to disk or logged
+- Cleared when browser is closed
+
+This is the expected security model for a localhost development tool. See [Security](#security) for details.
+
+You'll be prompted to choose an authentication method:
+
+**Option A: Browser-based OAuth (Recommended)**
+```
+? What GitLab instance do you want to log into? GitLab.com
+? How would you like to authenticate? Login with a web browser
+
+! First copy your one-time code: XXXX-XXXX
+- Press Enter to open gitlab.com in your browser...
+✓ Authenticated with GitLab.com
+```
+
+**Option B: Personal Access Token (for self-hosted GitLab or automation)**
+```
+? What GitLab instance do you want to log into? gitlab.company.com
+? How would you like to authenticate? Paste an authentication token
+? Paste your authentication token: ********
+✓ Authenticated with gitlab.company.com
+```
+
+**Creating a Personal Access Token manually:**
+1. Go to GitLab → Settings → Access Tokens
+2. Create token with **`read_api`** scope (minimum required - other scopes are fine but not needed)
+3. Copy the token (you'll only see it once!)
+4. Paste when prompted by `glab auth login`
+
+#### Step 2: Verify Authentication
+
+```bash
+# Check authentication status
+glab auth status
+```
+
+Expected output:
+```
+✓ Logged in to gitlab.com as username
+✓ Token scopes: api, read_api, read_user, write_repository
+```
+
+**Minimum required scope:** `read_api` (as configured above)
+
+#### Step 3: Test Token Access
+
+```bash
+# Test that glab can retrieve your token
+glab auth token
+```
+
+Should output your token (keep this private!). If you see an error, authentication failed.
+
+#### Step 4: Verify Token Works with GitLab API
+
+```bash
+# Test that your token can access GitLab API
+TOKEN=$(glab auth token)
+curl -H "PRIVATE-TOKEN: $TOKEN" "https://gitlab.com/api/v4/version"
+```
+
+Expected output: JSON with GitLab version info
+```json
+{"version":"16.7.0","revision":"abc123"}
+```
+
+**If this fails**, don't proceed to serve.py - fix authentication first. See [Troubleshooting](#troubleshooting).
+
+### Smoke Test: Verify Installation
+
+Run these commands to ensure everything is working:
+
+```bash
+# 1. Verify Python version (must be 3.8+)
+python3 --version
+# Expected: Python 3.8.0 or higher
+
+# 2. Verify glab is installed
+glab --version
+# Expected: glab version 1.30.0 or higher
+
+# 3. Verify glab authentication
+glab auth status
+# Expected: ✓ Logged in to <instance> as <username>
+
+# 4. Verify serve.py runs
+python serve.py --help
+# Expected: usage: serve.py [-h] (--group GROUP_ID | --projects PROJECT_IDS) --since TIME_SPEC ...
+
+# 5. Optional: Check that help command shows all options
+python serve.py --help | grep -E '(--group|--projects|--since|--port|--gitlab-url)'
+# Expected: Should show all 5 options
+```
+
+**All checks passed?** You're ready to use the tool! See [Quick Start](#quick-start).
+
+**Something failed?** See [Troubleshooting](#troubleshooting) below.
+
+### Version Requirements Summary
+
+| Component | Minimum Version | Recommended | Provided by Nix |
+|-----------|----------------|-------------|-----------------|
+| Python    | 3.8.0          | 3.12+       | 3.12.8          |
+| glab      | 1.30.0         | 1.51+       | 1.51.0          |
+| Browser   | Any modern browser with ES6 support | Chrome/Firefox latest | N/A |
 
 ## Quick Start
 
@@ -358,20 +505,339 @@ The JavaScript frontend (`index.html`) handles all application logic:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **glab command not found** | Run `nix-shell` (glab included) or install manually: `brew install glab` (macOS) |
-| **Failed to get GitLab token** | Run `glab auth login` and verify with `glab auth status` |
-| **CORS errors in browser** | gitlab.com works by default. Self-hosted: contact admin to allowlist localhost |
-| **Port already in use** | Use `--port 9000` or kill process: `lsof -ti:8000 \| xargs kill` |
-| **No pipelines showing** | Check time range not too old, verify project IDs exist, ensure token has `read_api` scope |
-| **Invalid time format** | Use "N days ago", "2025-01-10", or "last week" (not "yesterday" or "last Tuesday") |
-| **Slow timeline rendering** | Reduce time range, use `--projects` instead of `--group`, disable auto-refresh with `--refresh-interval 0` |
-| **Token visible in DevTools** | Expected behavior for localhost tool. Close browser when done to clear from memory |
+### Installation Issues
 
-**Performance guidance**: 10 projects × 7 days ≈ 100-500 pipelines (good), 50+ projects × 30 days = thousands (slow)
+#### `glab: command not found`
 
-**Debug steps**: Check browser console (F12), review server logs (stderr), verify API access with curl, check GitLab instance status.
+**Cause:** GitLab CLI not installed or not in PATH.
+
+**Solutions:**
+```bash
+# Option 1: Use nix-shell (includes glab automatically)
+nix-shell
+
+# Option 2: Install glab manually
+# macOS:
+brew install glab
+
+# Linux: Download from https://gitlab.com/gitlab-org/cli/-/releases
+# Or use package manager: apt, yum, pacman, etc.
+```
+
+**Verify fix:**
+```bash
+glab --version  # Should show version 1.30.0 or higher
+```
+
+#### `Failed to get GitLab token`
+
+**Cause:** Not authenticated with GitLab via glab.
+
+**Solutions:**
+```bash
+# Authenticate with GitLab
+glab auth login
+
+# Follow the interactive prompts:
+# 1. Choose GitLab instance (gitlab.com or self-hosted)
+# 2. Choose auth method (browser OAuth or personal token)
+# 3. Complete authentication flow
+
+# Verify authentication
+glab auth status
+```
+
+**Expected output:**
+```
+✓ Logged in to gitlab.com as <username>
+✓ Token scopes: api, read_api, ...
+```
+
+**Still failing?**
+- Check network connectivity to GitLab instance
+- Verify GitLab instance URL is correct
+- Try re-authenticating: `glab auth login --hostname gitlab.com`
+- Check glab config: `cat ~/.config/glab-cli/config.yml`
+
+#### `Python version too old` or `python3: command not found`
+
+**Cause:** Python 3.8+ not installed.
+
+**Check version:**
+```bash
+python3 --version
+```
+
+**Solutions:**
+```bash
+# Option 1: Use nix-shell (provides Python 3.12.8)
+nix-shell
+
+# Option 2: Install/update Python
+# macOS:
+brew install python3
+
+# Ubuntu/Debian:
+sudo apt update && sudo apt install python3
+
+# Or download from https://www.python.org/downloads/
+```
+
+### Runtime Issues
+
+#### CORS errors in browser console
+
+**Symptoms:**
+```
+Access to fetch at 'https://gitlab.com/api/v4/...' from origin 'http://localhost:8000'
+has been blocked by CORS policy
+```
+
+**Cause:** GitLab instance doesn't allow localhost CORS requests.
+
+**Solutions:**
+- **gitlab.com**: Should work by default. If not, try different browser.
+- **Self-hosted GitLab**: Contact GitLab admin to allowlist `http://localhost:8000` in CORS settings.
+- **Workaround**: Use browser CORS extension (⚠️ security risk, development only).
+
+**Verification:**
+```bash
+# Test API access directly
+TOKEN=$(glab auth token)
+curl -H "PRIVATE-TOKEN: $TOKEN" "https://gitlab.com/api/v4/version"
+# Should return GitLab version info
+```
+
+#### `Port 8000 already in use`
+
+**Symptoms:**
+```
+OSError: [Errno 48] Address already in use
+```
+
+**Solutions:**
+```bash
+# Option 1: Use different port
+python serve.py --group 12345 --since "2 days ago" --port 9000
+
+# Option 2: Kill process using port 8000
+lsof -ti:8000 | xargs kill
+
+# Option 3: Find what's using the port
+lsof -i:8000
+# Then decide: kill it or use different port
+```
+
+#### No pipelines showing in timeline
+
+**Possible causes and solutions:**
+
+1. **Time range too old (no pipelines in that period)**
+   ```bash
+   # Try recent time range
+   python serve.py --group 12345 --since "1 day ago"
+   ```
+
+2. **Invalid project IDs**
+   ```bash
+   # Verify project IDs exist
+   TOKEN=$(glab auth token)
+   curl -H "PRIVATE-TOKEN: $TOKEN" "https://gitlab.com/api/v4/projects/12345"
+   # Should return project info, not 404
+   ```
+
+3. **Token missing `read_api` scope**
+   ```bash
+   # Check token scopes
+   glab auth status
+   # Should show "read_api" in token scopes
+
+   # If missing, re-authenticate with correct scope
+   glab auth login
+   ```
+
+4. **Projects have no recent pipelines**
+   - Check GitLab web UI: do these projects have pipelines in the time range?
+   - Try different projects or time range
+
+**Debug in browser:**
+```
+1. Open browser DevTools (F12)
+2. Go to Console tab
+3. Look for errors (red text)
+4. Check Network tab for failed API requests
+5. Look for error responses from GitLab API
+```
+
+#### `Invalid time format` error
+
+**Cause:** Unsupported time specification format.
+
+**Supported formats:**
+```bash
+# ✓ Relative time (supported)
+--since "2 days ago"
+--since "1 week ago"
+--since "3 hours ago"
+--since "last week"
+
+# ✓ Absolute date (supported)
+--since "2025-01-10"
+--since "2025-01-13T14:30:00"
+
+# ✗ Not supported
+--since "yesterday"      # Use "1 day ago"
+--since "last Tuesday"   # Use absolute date
+--since "3 weeks"        # Use "3 weeks ago"
+```
+
+**Workaround for complex dates:**
+```bash
+# Use date command to generate ISO format
+--since "$(date -v-2d +%Y-%m-%d)"  # macOS: 2 days ago
+--since "$(date -d '2 days ago' +%Y-%m-%d)"  # Linux: 2 days ago
+```
+
+#### Slow timeline rendering / Browser freezing
+
+**Cause:** Too many pipelines/jobs to render.
+
+**Solutions:**
+
+1. **Reduce time range**
+   ```bash
+   # Instead of 30 days, try 7 days
+   --since "7 days ago"
+   ```
+
+2. **Use specific projects instead of group**
+   ```bash
+   # Instead of --group (all projects)
+   --projects 100,200,300  # Just the busy ones
+   ```
+
+3. **Disable auto-refresh while viewing**
+   ```bash
+   # Set refresh interval to 0
+   --refresh-interval 0
+   ```
+
+4. **Check data volume**
+   - Open browser DevTools → Console
+   - Look for log messages about number of pipelines/jobs fetched
+   - **Performance guidance:**
+     - Good: 10 projects × 7 days ≈ 100-500 pipelines
+     - Slow: 50+ projects × 30 days = thousands of pipelines
+
+### Token Security Issues
+
+#### Token visible in browser DevTools
+
+**Is this a problem?** No, this is expected behavior for a localhost development tool.
+
+**Security model:**
+- Token visible in browser memory, DevTools, and page source
+- NOT persisted to disk, localStorage, or sessionStorage
+- Only transmitted to configured GitLab instance
+- Cleared when browser is closed
+
+**Security practices:**
+```bash
+# ✓ Do:
+# - Use localhost only (default)
+# - Close browser when done
+# - Use minimal token scope (read_api)
+# - Rotate tokens regularly
+
+# ✗ Don't:
+# - Screen share with DevTools open
+# - Use --allow-non-localhost on untrusted networks
+# - Share token or save in configs
+```
+
+### Network Issues
+
+#### Cannot connect to self-hosted GitLab
+
+**Solutions:**
+```bash
+# Specify GitLab instance URL
+python serve.py --group 12345 --since "2 days ago" \
+  --gitlab-url https://gitlab.company.com
+
+# Verify URL is correct and accessible
+curl https://gitlab.company.com/api/v4/version
+
+# Check if VPN is required
+# Check if instance is behind firewall
+# Verify TLS certificates are valid
+```
+
+#### API rate limiting
+
+**Symptoms:** Timeline loads slowly or times out.
+
+**Cause:** GitLab API rate limits (default: 600 requests/minute).
+
+**Solutions:**
+- Reduce number of projects
+- Increase refresh interval: `--refresh-interval 300` (5 minutes)
+- Contact GitLab admin to increase rate limit
+- Use personal access token instead of OAuth (higher limits)
+
+### Debug Checklist
+
+When something isn't working, run through these checks:
+
+```bash
+# 1. Verify Python version
+python3 --version  # Must be 3.8+
+
+# 2. Verify glab installation
+glab --version  # Must be 1.30.0+
+
+# 3. Verify glab authentication
+glab auth status  # Must show logged in
+
+# 4. Test token retrieval
+glab auth token  # Should output token (not error)
+
+# 5. Test GitLab API access
+TOKEN=$(glab auth token)
+curl -H "PRIVATE-TOKEN: $TOKEN" "https://gitlab.com/api/v4/version"
+# Should return version info
+
+# 6. Check browser console (F12) for JavaScript errors
+
+# 7. Check server logs (stderr) for Python errors
+
+# 8. Verify network access to GitLab instance
+ping gitlab.com  # Or your self-hosted instance
+```
+
+### Still Having Issues?
+
+If none of the above solutions work:
+
+1. **Check GitLab instance status:** https://status.gitlab.com
+2. **Review browser console errors** (F12 → Console tab)
+3. **Check server logs** (stderr output from serve.py)
+4. **Test with minimal configuration:**
+   ```bash
+   python serve.py --projects 100 --since "1 hour ago"
+   ```
+5. **Verify GitLab API is accessible** with curl/wget
+6. **Check firewall/proxy settings** if in corporate environment
+
+### Getting Help
+
+When reporting issues, include:
+- Python version (`python3 --version`)
+- glab version (`glab --version`)
+- Operating system
+- GitLab instance (gitlab.com or self-hosted)
+- Full error message from browser console and server logs
+- Command used to start the server
 
 ## Development
 
