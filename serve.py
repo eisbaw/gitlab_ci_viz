@@ -304,50 +304,65 @@ def create_config_js(token, args):
     return f'const CONFIG = {json_str};'
 
 
-class ConfigInjectingHandler(SimpleHTTPRequestHandler):
-    """HTTP request handler that injects configuration into index.html."""
+def create_handler(config_js, token):
+    """Factory function to create a handler with injected config and token.
 
-    config_js = None  # Class variable to hold the config JavaScript
-    token = None  # Class variable to hold token for redaction
+    Args:
+        config_js: JavaScript configuration string to inject
+        token: GitLab token for redaction in logs
 
-    def do_GET(self):
-        """Handle GET requests, injecting config into index.html."""
-        if self.path == '/' or self.path == '/index.html':
-            # Serve index.html with injected config
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
+    Returns:
+        Handler class with config_js and token bound as instance attributes
+    """
+    class ConfigInjectingHandler(SimpleHTTPRequestHandler):
+        """HTTP request handler that injects configuration into index.html."""
 
-            # Read index.html template
-            index_path = Path(__file__).parent / 'index.html'
-            try:
-                with open(index_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
+        def __init__(self, *args, **kwargs):
+            """Initialize handler with config and token as instance attributes."""
+            self.config_js = config_js
+            self.token = token
+            super().__init__(*args, **kwargs)
 
-                # Validate HTML template has injection point
-                if '</head>' not in html_content:
-                    logging.error("index.html has no closing </head> tag")
-                    self.send_error(500, "Invalid HTML template - missing </head>")
-                    return
+        def do_GET(self):
+            """Handle GET requests, injecting config into index.html."""
+            if self.path == '/' or self.path == '/index.html':
+                # Serve index.html with injected config
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
 
-                # Inject config as a <script> tag before closing </head>
-                config_script = f'    <script>\n{self.config_js}\n    </script>\n'
-                html_with_config = html_content.replace('</head>', f'{config_script}</head>')
+                # Read index.html template
+                index_path = Path(__file__).parent / 'index.html'
+                try:
+                    with open(index_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
 
-                self.wfile.write(html_with_config.encode('utf-8'))
-            except FileNotFoundError as e:
-                error_msg = redact_token(str(e), self.token)
-                logging.error(f"index.html not found at {index_path}")
-                self.send_error(404, f"index.html not found: {error_msg}")
-        else:
-            # Serve other static files normally
-            super().do_GET()
+                    # Validate HTML template has injection point
+                    if '</head>' not in html_content:
+                        logging.error("index.html has no closing </head> tag")
+                        self.send_error(500, "Invalid HTML template - missing </head>")
+                        return
 
-    def log_message(self, format, *args):
-        """Override to provide cleaner logging with token redaction."""
-        message = format % args
-        message = redact_token(message, self.token)
-        print(f"[{self.log_date_time_string()}] {message}")
+                    # Inject config as a <script> tag before closing </head>
+                    config_script = f'    <script>\n{self.config_js}\n    </script>\n'
+                    html_with_config = html_content.replace('</head>', f'{config_script}</head>')
+
+                    self.wfile.write(html_with_config.encode('utf-8'))
+                except FileNotFoundError as e:
+                    error_msg = redact_token(str(e), self.token)
+                    logging.error(f"index.html not found at {index_path}")
+                    self.send_error(404, f"index.html not found: {error_msg}")
+            else:
+                # Serve other static files normally
+                super().do_GET()
+
+        def log_message(self, format, *args):
+            """Override to provide cleaner logging with token redaction."""
+            message = format % args
+            message = redact_token(message, self.token)
+            print(f"[{self.log_date_time_string()}] {message}")
+
+    return ConfigInjectingHandler
 
 
 def main():
@@ -375,13 +390,14 @@ def main():
     # Generate config JavaScript
     logging.debug("Generating JavaScript configuration")
     config_js = create_config_js(token, args)
-    ConfigInjectingHandler.config_js = config_js
-    ConfigInjectingHandler.token = token  # Store for redaction in error messages
     logging.info("Configuration prepared successfully")
+
+    # Create handler with config and token as instance attributes
+    handler_class = create_handler(config_js, token)
 
     # Start HTTP server
     server_address = (bind_address, args.port)
-    httpd = HTTPServer(server_address, ConfigInjectingHandler)
+    httpd = HTTPServer(server_address, handler_class)
 
     print(f"\n{'='*60}")
     print("GitLab CI GANTT Visualizer Server")
