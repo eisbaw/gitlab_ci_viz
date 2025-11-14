@@ -25,6 +25,10 @@ update-visjs VERSION:
 test:
     pytest -v --cov=. --cov-report=term-missing --cov-report=html
 
+# Run performance benchmarks
+benchmark:
+    python test/run_performance_benchmarks.py
+
 # Run linting and code quality checks
 lint:
     @echo "Linting not yet configured"

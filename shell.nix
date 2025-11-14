@@ -7,6 +7,13 @@ pkgs.mkShell {
     python3Packages.pytest
     python3Packages.pytest-cov
 
+    # Performance testing dependencies
+    # Browser required because Performance API tests must run in real browser environment
+    # Python selenium + chromium enables headless automated benchmarking
+    python3Packages.selenium
+    chromium
+    chromedriver
+
     # GitLab CLI
     glab
 

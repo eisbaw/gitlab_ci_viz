@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Benchmarks - GitLab CI GANTT Visualizer</title>
+    <link href="../static/vis-timeline-graph2d-8.3.1.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 { color: #333; }
+        h2 { color: #666; margin-top: 30px; }
+        .test-result {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: white;
+        }
+        .test-result.pass {
+            border-left: 4px solid #28a745;
+        }
+        .test-result.fail {
+            border-left: 4px solid #dc3545;
+            background-color: #fff5f5;
+        }
+        .test-result.warn {
+            border-left: 4px solid #ffc107;
+            background-color: #fffef5;
+        }
+        .metric {
+            font-family: monospace;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .baseline {
+            color: #666;
+            font-size: 12px;
+        }
+        .summary {
+            padding: 20px;
+            margin: 20px 0;
+            background-color: white;
+            border-radius: 4px;
+        }
+        .summary.all-pass {
+            border-left: 4px solid #28a745;
+        }
+        .summary.has-failures {
+            border-left: 4px solid #dc3545;
+        }
+        #run-tests {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #run-tests:hover {
+            background-color: #0056b3;
+        }
+        #run-tests:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .metadata {
+            font-size: 12px;
+            color: #666;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Performance Benchmarks</h1>
+    <p>Browser-based performance tests for critical operations</p>
+
+    <button id="run-tests">Run Benchmarks</button>
+
+    <div id="results"></div>
+
+    <script src="../static/vis-timeline-graph2d-8.3.1.min.js"></script>
+    <script src="../static/data-transformer.js"></script>
+    <script>
+        /**
+         * Performance test configuration
+         * Baselines defined in task-036 acceptance criteria
+         */
+        const PERFORMANCE_BASELINES = {
+            transformJobs: {
+                name: "Transform 1000 jobs to domain model",
+                threshold: 500,  // ms - based on acceptable UX delay for data loading
+                // 20% tolerance allows for:
+                // - Browser variance (different JavaScript engines)
+                // - Hardware differences (CPU speed, memory)
+                // - Minor regressions vs. critical slowdowns (>20% is failure)
+                regressionTolerance: 0.20
+            },
+            timelineFormat: {
+                name: "Transform domain model to vis.js format (500 items)",
+                threshold: 100,  // ms (portion of 2s total rendering)
+                regressionTolerance: 0.20
+            },
+            fullPipeline: {
+                name: "Full transformation: 10 projects, 100 pipelines each",
+                threshold: 2000,  // ms (data transformation only, not API)
+                regressionTolerance: 0.20
+            },
+            autoRefreshNoChanges: {
+                name: "Auto-refresh simulation (no data changes)",
+                threshold: 1000,  // ms
+                regressionTolerance: 0.20
+            }
+        };
+
+        /**
+         * Mock data generator for consistent test data
+         */
+        class MockDataGenerator {
+            /**
+             * Generate mock pipeline data matching GitLab API format
+             */
+            static generatePipelines(count, options = {}) {
+                const pipelines = [];
+                const baseTime = options.baseTime || new Date('2025-01-13T10:00:00Z');
+                const projectId = options.projectId || 123;
+                const userId = options.userId || 1;
+                const username = options.username || 'testuser';
+
+                for (let i = 0; i < count; i++) {
+                    const pipelineId = (options.startId || 1000) + i;
+                    const createdAt = new Date(baseTime.getTime() + i * 60000); // 1 minute apart
+                    const startedAt = new Date(createdAt.getTime() + 5000); // Started 5s after created
+                    const finishedAt = new Date(startedAt.getTime() + 300000); // 5 minute duration
+
+                    pipelines.push({
+                        id: pipelineId,
+                        project_id: projectId,
+                        status: this.randomStatus(),
+                        created_at: createdAt.toISOString(),
+                        started_at: startedAt.toISOString(),
+                        finished_at: finishedAt.toISOString(),
+                        duration: 300,
+                        web_url: `https://gitlab.example.com/project/${projectId}/pipelines/${pipelineId}`,
+                        user: {
+                            id: userId,
+                            username: username,
+                            name: `Test User ${userId}`
+                        }
+                    });
+                }
+
+                return pipelines;
+            }
+
+            /**
+             * Generate mock job data matching GitLab API format
+             */
+            static generateJobs(pipelineIds, jobsPerPipeline = 10) {
+                const jobs = [];
+                let jobId = 5000;
+
+                for (const pipelineId of pipelineIds) {
+                    for (let i = 0; i < jobsPerPipeline; i++) {
+                        const createdAt = new Date('2025-01-13T10:00:00Z');
+                        const startedAt = new Date(createdAt.getTime() + i * 10000); // Staggered start
+                        const finishedAt = new Date(startedAt.getTime() + 60000); // 1 minute duration
+
+                        jobs.push({
+                            id: jobId++,
+                            name: `job-${i}`,
+                            stage: `stage-${Math.floor(i / 3)}`,
+                            status: this.randomStatus(),
+                            created_at: createdAt.toISOString(),
+                            started_at: startedAt.toISOString(),
+                            finished_at: finishedAt.toISOString(),
+                            duration: 60,
+                            web_url: `https://gitlab.example.com/job/${jobId}`,
+                            pipeline_id: pipelineId
+                        });
+                    }
+                }
+
+                return jobs;
+            }
+
+            /**
+             * Generate random status
+             */
+            static randomStatus() {
+                const statuses = ['success', 'failed', 'running', 'pending', 'canceled'];
+                return statuses[Math.floor(Math.random() * statuses.length)];
+            }
+        }
+
+        /**
+         * Performance test runner
+         */
+        class PerformanceTestRunner {
+            constructor() {
+                this.results = [];
+                this.commitHash = this.getCommitHash();
+            }
+
+            /**
+             * Get git commit hash (from meta tag if available)
+             */
+            getCommitHash() {
+                const metaTag = document.querySelector('meta[name="git-commit"]');
+                return metaTag ? metaTag.content : 'unknown';
+            }
+
+            /**
+             * Run a single benchmark test
+             */
+            async runBenchmark(name, fn, baseline) {
+                // Warm-up run: Allow JavaScript JIT compiler to optimize the function
+                // before measuring. This gives more consistent results by measuring
+                // optimized code performance, not cold-start performance.
+                fn();
+
+                // Measured run
+                const markStart = `${name}-start`;
+                const markEnd = `${name}-end`;
+                const measureName = `${name}-duration`;
+
+                performance.mark(markStart);
+                const result = fn();
+                performance.mark(markEnd);
+
+                const measure = performance.measure(measureName, markStart, markEnd);
+                const duration = measure.duration;
+
+                // Calculate pass/fail
+                const passed = duration <= baseline.threshold;
+                const maxAllowed = baseline.threshold * (1 + baseline.regressionTolerance);
+                const isRegression = duration > maxAllowed;
+
+                const testResult = {
+                    name: baseline.name,
+                    duration: duration,
+                    threshold: baseline.threshold,
+                    passed: passed,
+                    isRegression: isRegression,
+                    result: result
+                };
+
+                this.results.push(testResult);
+
+                // Clean up performance marks
+                performance.clearMarks(markStart);
+                performance.clearMarks(markEnd);
+                performance.clearMeasures(measureName);
+
+                return testResult;
+            }
+
+            /**
+             * Benchmark 1: Transform 1000 jobs to domain model
+             */
+            async benchmarkTransformJobs() {
+                console.log('Running benchmark: Transform 1000 jobs');
+
+                // Generate test data: 100 pipelines with 10 jobs each = 1000 jobs
+                const pipelines = MockDataGenerator.generatePipelines(100);
+                const pipelineIds = pipelines.map(p => p.id);
+                const jobs = MockDataGenerator.generateJobs(pipelineIds, 10);
+
+                return await this.runBenchmark(
+                    'transform-jobs',
+                    () => {
+                        const users = DataTransformer.transformToDomainModel(pipelines, jobs);
+                        return { userCount: users.length, totalJobs: jobs.length };
+                    },
+                    PERFORMANCE_BASELINES.transformJobs
+                );
+            }
+
+            /**
+             * Benchmark 2: Transform to vis.js format (500 items)
+             */
+            async benchmarkTimelineFormat() {
+                console.log('Running benchmark: Timeline format conversion');
+
+                // Generate test data: 50 pipelines with 10 jobs each = 500 items (50 pipelines + 500 jobs)
+                const pipelines = MockDataGenerator.generatePipelines(50);
+                const pipelineIds = pipelines.map(p => p.id);
+                const jobs = MockDataGenerator.generateJobs(pipelineIds, 10);
+
+                // Pre-transform to domain model (not measured)
+                const users = DataTransformer.transformToDomainModel(pipelines, jobs);
+
+                return await this.runBenchmark(
+                    'timeline-format',
+                    () => {
+                        const result = DataTransformer.transformToVisFormat(users);
+                        return { groups: result.groups.length, items: result.items.length };
+                    },
+                    PERFORMANCE_BASELINES.timelineFormat
+                );
+            }
+
+            /**
+             * Benchmark 3: Full pipeline (10 projects, 100 pipelines each)
+             */
+            async benchmarkFullPipeline() {
+                console.log('Running benchmark: Full transformation pipeline');
+
+                // Generate test data: 10 projects with 100 pipelines each, 10 jobs per pipeline
+                const allPipelines = [];
+                const allJobs = [];
+
+                for (let projectId = 1; projectId <= 10; projectId++) {
+                    const pipelines = MockDataGenerator.generatePipelines(100, {
+                        projectId: projectId,
+                        userId: projectId,
+                        username: `user${projectId}`,
+                        startId: projectId * 1000
+                    });
+                    allPipelines.push(...pipelines);
+
+                    const pipelineIds = pipelines.map(p => p.id);
+                    const jobs = MockDataGenerator.generateJobs(pipelineIds, 10);
+                    allJobs.push(...jobs);
+                }
+
+                return await this.runBenchmark(
+                    'full-pipeline',
+                    () => {
+                        const result = DataTransformer.transform(allPipelines, allJobs);
+                        return {
+                            pipelines: allPipelines.length,
+                            jobs: allJobs.length,
+                            groups: result.groups.length,
+                            items: result.items.length
+                        };
+                    },
+                    PERFORMANCE_BASELINES.fullPipeline
+                );
+            }
+
+            /**
+             * Benchmark 4: Auto-refresh with no changes (simulation)
+             */
+            async benchmarkAutoRefreshNoChanges() {
+                console.log('Running benchmark: Auto-refresh simulation');
+
+                // Generate test data: moderate size dataset
+                const pipelines = MockDataGenerator.generatePipelines(50);
+                const pipelineIds = pipelines.map(p => p.id);
+                const jobs = MockDataGenerator.generateJobs(pipelineIds, 10);
+
+                // Pre-transform to domain model and vis format (simulating existing state)
+                const existingResult = DataTransformer.transform(pipelines, jobs);
+
+                return await this.runBenchmark(
+                    'auto-refresh-no-changes',
+                    () => {
+                        // Simulate refresh: re-transform same data
+                        // In real scenario, API would return same data, transformation would run again
+                        const newResult = DataTransformer.transform(pipelines, jobs);
+
+                        // Compare to detect changes (in real app, timeline.setItems would be called)
+                        const hasChanges = newResult.items.length !== existingResult.items.length;
+
+                        return {
+                            items: newResult.items.length,
+                            groups: newResult.groups.length,
+                            hasChanges: hasChanges
+                        };
+                    },
+                    PERFORMANCE_BASELINES.autoRefreshNoChanges
+                );
+            }
+
+            /**
+             * Run all benchmarks
+             */
+            async runAll() {
+                this.results = [];
+
+                await this.benchmarkTransformJobs();
+                await this.benchmarkTimelineFormat();
+                await this.benchmarkFullPipeline();
+                await this.benchmarkAutoRefreshNoChanges();
+
+                this.displayResults();
+                this.logResults();
+            }
+
+            /**
+             * Display results in HTML
+             */
+            displayResults() {
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = '';
+
+                // Summary
+                const totalTests = this.results.length;
+                const passedTests = this.results.filter(r => r.passed).length;
+                const failedTests = totalTests - passedTests;
+                const hasRegressions = this.results.some(r => r.isRegression);
+
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = `summary ${failedTests === 0 ? 'all-pass' : 'has-failures'}`;
+                summaryDiv.innerHTML = `
+                    <h2>Summary</h2>
+                    <p><strong>Total Tests:</strong> ${totalTests}</p>
+                    <p><strong>Passed:</strong> ${passedTests}</p>
+                    <p><strong>Failed:</strong> ${failedTests}</p>
+                    ${hasRegressions ? '<p><strong>⚠️ Performance regressions detected (>20% slower than baseline)</strong></p>' : ''}
+                `;
+                resultsDiv.appendChild(summaryDiv);
+
+                // Individual results
+                const resultsTitle = document.createElement('h2');
+                resultsTitle.textContent = 'Benchmark Results';
+                resultsDiv.appendChild(resultsTitle);
+
+                for (const result of this.results) {
+                    const resultDiv = document.createElement('div');
+                    const statusClass = result.passed ? 'pass' : (result.isRegression ? 'fail' : 'warn');
+                    resultDiv.className = `test-result ${statusClass}`;
+
+                    const status = result.passed ? '✓ PASS' : (result.isRegression ? '✗ FAIL (REGRESSION)' : '⚠ FAIL');
+                    const percentage = ((result.duration / result.threshold) * 100).toFixed(1);
+
+                    resultDiv.innerHTML = `
+                        <strong>${status}: ${result.name}</strong>
+                        <div class="metric">Duration: ${result.duration.toFixed(2)}ms</div>
+                        <div class="metric">Threshold: ${result.threshold}ms (${percentage}% of threshold)</div>
+                        <div class="baseline">Regression tolerance: ±${(PERFORMANCE_BASELINES.transformJobs.regressionTolerance * 100)}%</div>
+                        ${result.result ? `<div class="metric">Result: ${JSON.stringify(result.result)}</div>` : ''}
+                    `;
+
+                    resultsDiv.appendChild(resultDiv);
+                }
+
+                // Metadata
+                const timestamp = new Date().toISOString();
+                const metadataDiv = document.createElement('div');
+                metadataDiv.className = 'metadata';
+                metadataDiv.innerHTML = `
+                    <strong>Test Metadata</strong><br>
+                    Timestamp: ${timestamp}<br>
+                    Commit: ${this.commitHash}<br>
+                    User Agent: ${navigator.userAgent}
+                `;
+                resultsDiv.appendChild(metadataDiv);
+            }
+
+            /**
+             * Log results to console with timestamp and commit hash
+             */
+            logResults() {
+                const timestamp = new Date().toISOString();
+                console.log('='.repeat(80));
+                console.log('PERFORMANCE BENCHMARK RESULTS');
+                console.log('='.repeat(80));
+                console.log(`Timestamp: ${timestamp}`);
+                console.log(`Commit: ${this.commitHash}`);
+                console.log('');
+
+                for (const result of this.results) {
+                    const status = result.passed ? 'PASS' : (result.isRegression ? 'FAIL (REGRESSION)' : 'FAIL');
+                    console.log(`[${status}] ${result.name}`);
+                    console.log(`  Duration: ${result.duration.toFixed(2)}ms (threshold: ${result.threshold}ms)`);
+                    if (result.result) {
+                        console.log(`  Result: ${JSON.stringify(result.result)}`);
+                    }
+                    console.log('');
+                }
+
+                console.log('='.repeat(80));
+            }
+        }
+
+        // Wire up UI
+        document.getElementById('run-tests').addEventListener('click', async function() {
+            const button = this;
+            button.disabled = true;
+            button.textContent = 'Running benchmarks...';
+
+            const runner = new PerformanceTestRunner();
+            await runner.runAll();
+
+            button.disabled = false;
+            button.textContent = 'Run Benchmarks Again';
+        });
+
+        // Auto-run on load
+        window.addEventListener('load', function() {
+            console.log('Performance benchmarks loaded. Click "Run Benchmarks" to start.');
+        });
+    </script>
+</body>
+</html>
