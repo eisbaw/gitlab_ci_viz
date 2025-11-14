@@ -467,11 +467,12 @@ class GitLabAPIClient {
     /**
      * Fetch pipelines for given projects within specified time range
      *
-     * Fetches all pipelines for the provided projects, filtering by the configured
-     * time range (CONFIG.since). Handles pagination automatically to retrieve all
-     * pipelines across multiple pages.
+     * Fetches all pipelines for the provided projects, filtering by the provided
+     * timestamp. Handles pagination automatically to retrieve all pipelines across
+     * multiple pages.
      *
      * @param {Array} projects - Array of project objects with id property
+     * @param {string} updatedAfter - ISO 8601 timestamp to filter pipelines (required)
      * @returns {Promise<Array>} - Array of pipeline objects with metadata:
      *   [{
      *     id: number,
@@ -488,7 +489,7 @@ class GitLabAPIClient {
      *   }]
      * @throws {Error} - If all projects fail to fetch pipelines
      */
-    async fetchPipelines(projects) {
+    async fetchPipelines(projects, updatedAfter) {
         if (!Array.isArray(projects) || projects.length === 0) {
             throw this._createError(
                 'ConfigurationError',
@@ -506,15 +507,22 @@ class GitLabAPIClient {
             }
         }
 
-        // Parse CONFIG.since to ISO 8601 format for updated_after parameter
-        const updatedAfter = this._parseTimeRange(CONFIG.since);
+        // Validate updatedAfter is provided
+        if (!updatedAfter) {
+            throw this._createError(
+                'ConfigurationError',
+                'updatedAfter timestamp is required'
+            );
+        }
+
+        const timestamp = updatedAfter;
 
         // Fetch pipelines for all projects using allSettled for partial success
         const pipelinePromises = projects.map(project =>
             this._requestPaginated(
                 `/projects/${project.id}/pipelines`,
                 {
-                    updated_after: updatedAfter,
+                    updated_after: timestamp,
                     order_by: 'updated_at',
                     sort: 'desc'
                 }

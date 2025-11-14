@@ -202,6 +202,13 @@ def parse_arguments():
         help='Allow serving on non-localhost addresses (INSECURE: token exposed to network)'
     )
 
+    parser.add_argument(
+        '--refresh-interval',
+        type=int,
+        default=60,
+        help='Auto-refresh interval in seconds (default: 60, 0 to disable)'
+    )
+
     args = parser.parse_args()
 
     # Log parsed arguments at INFO level (without sensitive token)
@@ -222,6 +229,11 @@ def validate_arguments(args):
     # Validate port range
     if not (1 <= args.port <= 65535):
         logging.error(f"Invalid port {args.port}. Must be between 1 and 65535.")
+        sys.exit(1)
+
+    # Validate refresh interval (0 to disable, max 86400 = 24 hours)
+    if args.refresh_interval < 0 or args.refresh_interval > 86400:
+        logging.error(f"Invalid refresh interval {args.refresh_interval}. Must be 0-86400 seconds (0 disables auto-refresh, max 24 hours).")
         sys.exit(1)
 
     # Validate GitLab URL
@@ -268,7 +280,8 @@ def create_config_js(token, args):
         'gitlabUrl': args.gitlab_url,
         'since': args.since,
         'updatedAfter': args.updated_after,
-        'port': args.port
+        'port': args.port,
+        'refreshInterval': args.refresh_interval
     }
 
     if args.group:

@@ -168,6 +168,9 @@
         // Global API client instance
         let apiClient = null;
 
+        // Auto-refresh state
+        let refreshTimer = null;
+
         /**
          * Update status display with appropriate styling
          */
@@ -241,6 +244,9 @@
 
             // Fetch and render data
             fetchAndRender();
+
+            // Schedule auto-refresh if enabled
+            scheduleAutoRefresh();
         });
 
         /**
@@ -314,6 +320,32 @@
 
 
         /**
+         * Schedule auto-refresh if enabled in configuration
+         */
+        function scheduleAutoRefresh() {
+            // Clear any existing timer
+            if (refreshTimer) {
+                clearTimeout(refreshTimer);
+                refreshTimer = null;
+            }
+
+            // Check if auto-refresh is enabled
+            if (!CONFIG.refreshInterval || CONFIG.refreshInterval <= 0) {
+                console.log('Auto-refresh disabled (refreshInterval <= 0)');
+                return;
+            }
+
+            console.log(`Scheduling auto-refresh in ${CONFIG.refreshInterval} seconds`);
+
+            // Schedule next refresh
+            refreshTimer = setTimeout(async () => {
+                console.log('Auto-refresh triggered');
+                await fetchAndRender(true); // Pass isRefresh=true
+                scheduleAutoRefresh(); // Schedule next refresh
+            }, CONFIG.refreshInterval * 1000);
+        }
+
+        /**
          * Fetch GitLab data and render on timeline
          *
          * Orchestrates the complete data flow:
@@ -322,11 +354,20 @@
          * 3. Fetch jobs for those pipelines
          * 4. Transform to vis.js format
          * 5. Update timeline with transformed data
+         *
+         * @param {boolean} isRefresh - If true, preserve timeline zoom/pan state
          */
-        async function fetchAndRender() {
+        async function fetchAndRender(isRefresh = false) {
             try {
+                // Save current timeline window if refreshing
+                let savedWindow = null;
+                if (isRefresh && timeline) {
+                    savedWindow = timeline.getWindow();
+                }
+
                 // Step 1: Fetch projects
-                showLoading('Fetching projects from GitLab...');
+                const loadingMsg = isRefresh ? 'Refreshing data...' : 'Fetching projects from GitLab...';
+                showLoading(loadingMsg);
                 const projects = await apiClient.fetchProjects();
 
                 // Create project map for quick lookup
@@ -335,15 +376,27 @@
 
                 // Step 2: Fetch pipelines
                 showLoading(`Fetching pipelines from ${projects.length} projects...`);
-                const pipelines = await apiClient.fetchPipelines(projects);
+                const pipelines = await apiClient.fetchPipelines(projects, CONFIG.updatedAfter);
 
                 if (pipelines.length === 0) {
-                    updateStatus(
-                        '<strong>No pipelines found</strong><br>' +
-                        `No pipelines found in the specified time range (since ${CONFIG.since}).<br>` +
-                        'Try adjusting the time range or check if pipelines exist in the configured projects.',
-                        'warning'
-                    );
+                    if (isRefresh) {
+                        // Expected: no new updates since last refresh
+                        const timeStr = new Date().toLocaleTimeString();
+                        updateStatus(
+                            `<strong>No new pipelines</strong> (refreshed at ${timeStr})<br>` +
+                            `No pipeline updates since ${CONFIG.since}.<br>` +
+                            'This is normal - the chart will update automatically when new pipelines run.',
+                            'success'
+                        );
+                    } else {
+                        // Actual problem: no data in time range
+                        updateStatus(
+                            '<strong>No pipelines found</strong><br>' +
+                            `No pipelines found in the specified time range (since ${CONFIG.since}).<br>` +
+                            'Try adjusting the time range or check if pipelines exist in the configured projects.',
+                            'warning'
+                        );
+                    }
                     return;
                 }
 
@@ -393,9 +446,17 @@
                 timeline.setGroups(transformed.groups);
                 timeline.setItems(enrichedItems);
 
-                // Success message
+                // Restore window if refreshing
+                if (savedWindow) {
+                    timeline.setWindow(savedWindow.start, savedWindow.end);
+                }
+
+                // Success message with timestamp
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString();
+                const actionWord = isRefresh ? 'refreshed' : 'loaded';
                 const successMessage =
-                    `<strong>Data loaded successfully</strong><br>` +
+                    `<strong>Data ${actionWord} successfully</strong> at ${timeStr}<br>` +
                     `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs<br>` +
                     `Time range: ${CONFIG.since}`;
                 updateStatus(successMessage, 'success');

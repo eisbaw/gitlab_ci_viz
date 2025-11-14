@@ -288,7 +288,8 @@ class TestConfigGeneration(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='2 days ago',
             updated_after='2025-01-11T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('test-token-123', args)
 
@@ -297,6 +298,7 @@ class TestConfigGeneration(unittest.TestCase):
         self.assertIn('"gitlabUrl": "https://gitlab.com"', config_js)
         self.assertIn('"since": "2 days ago"', config_js)
         self.assertIn('"updatedAfter": "2025-01-11T10:00:00Z"', config_js)
+        self.assertIn('"refreshInterval": 60', config_js)
         self.assertIn('"port": 8000', config_js)
         self.assertIn('"groupId": "12345"', config_js)
         self.assertNotIn('projectIds', config_js)
@@ -309,7 +311,8 @@ class TestConfigGeneration(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='2025-01-10',
             updated_after='2025-01-10T00:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('test-token-456', args)
 
@@ -329,7 +332,8 @@ class TestConfigGeneration(unittest.TestCase):
             gitlab_url='https://gitlab.com/test"quote',
             since='1 day ago',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('token"with"quotes', args)
 
@@ -344,34 +348,34 @@ class TestArgumentValidation(unittest.TestCase):
     @patch('sys.exit')
     def test_validate_invalid_port_low(self, mock_exit):
         """Test validation rejects port below range."""
-        args = MagicMock(port=0, gitlab_url='https://gitlab.com', projects='123', since='2 days ago')
+        args = MagicMock(port=0, gitlab_url='https://gitlab.com', projects='123', since='2 days ago', refresh_interval=60)
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_invalid_port_high(self, mock_exit):
         """Test validation rejects port above range."""
-        args = MagicMock(port=70000, gitlab_url='https://gitlab.com', projects='123', since='2 days ago')
+        args = MagicMock(port=70000, gitlab_url='https://gitlab.com', projects='123', since='2 days ago', refresh_interval=60)
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_invalid_gitlab_url(self, mock_exit):
         """Test validation rejects invalid URL."""
-        args = MagicMock(port=8000, gitlab_url='not-a-url', projects='123', since='2 days ago')
+        args = MagicMock(port=8000, gitlab_url='not-a-url', projects='123', since='2 days ago', refresh_interval=60)
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     @patch('sys.exit')
     def test_validate_empty_project_ids(self, mock_exit):
         """Test validation rejects empty project IDs."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='100,,200', group=None, since='2 days ago')
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='100,,200', group=None, since='2 days ago', refresh_interval=60)
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     def test_validate_valid_arguments(self):
         """Test validation accepts valid arguments."""
-        args = MagicMock(port=8080, gitlab_url='https://gitlab.com', projects='100,200', group=None, since='2 days ago')
+        args = MagicMock(port=8080, gitlab_url='https://gitlab.com', projects='100,200', group=None, since='2 days ago', refresh_interval=60)
         # Should not raise or exit
         serve.validate_arguments(args)
         # Verify updated_after was set
@@ -380,7 +384,7 @@ class TestArgumentValidation(unittest.TestCase):
     @patch('sys.exit')
     def test_validate_invalid_time_spec(self, mock_exit):
         """Test validation rejects invalid time specification."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='invalid time')
+        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='invalid time', refresh_interval=60)
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
@@ -406,7 +410,8 @@ class TestHTMLInjection(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='1 day ago',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('test-token', args)
 
@@ -433,7 +438,8 @@ class TestHTMLInjection(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='1 day ago',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('test-token', args)
 
@@ -467,7 +473,8 @@ class TestHTMLInjection(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='</script><script>alert("xss")</script>',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('test-token', args)
 
@@ -505,7 +512,8 @@ class TestHTMLInjection(unittest.TestCase):
             gitlab_url='https://gitlab.com/"; alert("xss"); "',
             since='1 day ago',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('tok"en', args)
 
@@ -525,7 +533,8 @@ class TestHTMLInjection(unittest.TestCase):
             gitlab_url='https://gitlab.com/test&param=value',
             since='<2 days>',
             updated_after='2025-01-11T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
         config_js = serve.create_config_js('token&key=val', args)
 
@@ -639,7 +648,8 @@ class TestMainFunction(unittest.TestCase):
             gitlab_url='https://gitlab.com',
             since='1 day ago',
             updated_after='2025-01-12T10:00:00Z',
-            port=8000
+            port=8000,
+            refresh_interval=60
         )
 
         config_js = serve.create_config_js(token, args)
