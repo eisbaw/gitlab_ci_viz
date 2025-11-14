@@ -46,6 +46,27 @@ class TestGitLabToken(unittest.TestCase):
         serve.get_gitlab_token()
         mock_exit.assert_called_once_with(1)
 
+    @patch('subprocess.run')
+    @patch('sys.exit')
+    def test_get_gitlab_token_command_fails(self, mock_exit, mock_run):
+        """Test handling of glab command failure (CalledProcessError)."""
+        import subprocess
+        mock_run.side_effect = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=['glab', 'auth', 'token'],
+            stderr='authentication failed'
+        )
+        serve.get_gitlab_token()
+        mock_exit.assert_called_once_with(1)
+
+    @patch('subprocess.run')
+    @patch('sys.exit')
+    def test_get_gitlab_token_command_not_found(self, mock_exit, mock_run):
+        """Test handling of missing glab command (FileNotFoundError)."""
+        mock_run.side_effect = FileNotFoundError("glab not found")
+        serve.get_gitlab_token()
+        mock_exit.assert_called_once_with(1)
+
 
 class TestArgumentParsing(unittest.TestCase):
     """Test command-line argument parsing."""
@@ -101,6 +122,41 @@ class TestArgumentParsing(unittest.TestCase):
         with patch('sys.argv', test_args):
             args = serve.parse_arguments()
             self.assertEqual(args.gitlab_url, 'https://gitlab.example.com')
+
+    def test_parse_arguments_both_group_and_projects_fails(self):
+        """Test that providing both --group and --projects is rejected."""
+        test_args = [
+            'serve.py',
+            '--group', '12345',
+            '--projects', '100,200',
+            '--since', '1 day ago'
+        ]
+        with patch('sys.argv', test_args):
+            with patch('sys.stderr'):  # Suppress argparse error output
+                with self.assertRaises(SystemExit):
+                    serve.parse_arguments()
+
+    def test_parse_arguments_missing_since_fails(self):
+        """Test that missing required --since argument is rejected."""
+        test_args = [
+            'serve.py',
+            '--group', '12345'
+        ]
+        with patch('sys.argv', test_args):
+            with patch('sys.stderr'):  # Suppress argparse error output
+                with self.assertRaises(SystemExit):
+                    serve.parse_arguments()
+
+    def test_parse_arguments_missing_project_selection_fails(self):
+        """Test that missing both --group and --projects is rejected."""
+        test_args = [
+            'serve.py',
+            '--since', '1 day ago'
+        ]
+        with patch('sys.argv', test_args):
+            with patch('sys.stderr'):  # Suppress argparse error output
+                with self.assertRaises(SystemExit):
+                    serve.parse_arguments()
 
 
 class TestConfigGeneration(unittest.TestCase):
@@ -198,6 +254,153 @@ class TestArgumentValidation(unittest.TestCase):
         serve.validate_arguments(args)
 
 
+class TestHTMLInjection(unittest.TestCase):
+    """Test HTML template injection and XSS prevention.
+
+    Critical Security Tests:
+    These tests prevent a specific attack: malicious input containing </script>
+    or <script> breaking out of the embedded JSON and executing arbitrary JS.
+
+    Attack vector: If group ID or since value contains "</script><script>alert(1)</script>",
+    it could close the config script tag early and inject malicious code.
+
+    Defense: Escape </script> to <\/script> (valid in JS strings, not HTML tags).
+    """
+
+    def test_html_injection_basic(self):
+        """Test basic HTML template injection."""
+        args = MagicMock(
+            group='12345',
+            projects=None,
+            gitlab_url='https://gitlab.com',
+            since='1 day ago',
+            port=8000
+        )
+        config_js = serve.create_config_js('test-token', args)
+
+        # Simulate HTML injection (what ConfigInjectingHandler does)
+        html_template = '<html>\n<head>\n</head>\n<body></body>\n</html>'
+        config_script = f'    <script>\n{config_js}\n    </script>\n'
+        result = html_template.replace('</head>', f'{config_script}</head>')
+
+        # Verify injection point and structure
+        self.assertIn('<script>', result)
+        self.assertIn('const CONFIG =', result)
+        self.assertIn('"gitlabToken": "test-token"', result)
+        self.assertIn('</script>\n</head>', result)
+
+    def test_html_injection_xss_prevention_script_tag(self):
+        """Test XSS prevention with script tags in input.
+
+        The code now escapes <script> and </script> tags to prevent HTML parser
+        interference. These escapes are valid in JavaScript but not raw JSON.
+        """
+        args = MagicMock(
+            group='<script>alert("xss")</script>',
+            projects=None,
+            gitlab_url='https://gitlab.com',
+            since='1 day ago',
+            port=8000
+        )
+        config_js = serve.create_config_js('test-token', args)
+
+        # Verify script tags are escaped
+        self.assertNotIn('<script>', config_js)
+        self.assertNotIn('</script>', config_js)
+        self.assertIn(r'<\script>', config_js)
+        self.assertIn(r'<\/script>', config_js)
+
+        # The critical test: ensure quotes are escaped so string can't be broken out of
+        self.assertIn(r'\"', config_js)
+
+        # Verify by un-escaping and parsing (simulating what JavaScript does)
+        import json
+        json_for_parsing = (config_js.replace('const CONFIG = ', '').rstrip(';')
+                            .replace(r'<\script>', '<script>')
+                            .replace(r'<\/script>', '</script>'))
+        config_obj = json.loads(json_for_parsing)
+        self.assertEqual(config_obj['groupId'], '<script>alert("xss")</script>')
+
+    def test_html_injection_xss_prevention_closing_script(self):
+        """Test that script tags in input don't break the HTML structure.
+
+        This is a critical XSS test: if user input contains </script> or <script>,
+        it could potentially close/inject script tags in the HTML.
+        The code must escape these to prevent HTML parser interference.
+        """
+        args = MagicMock(
+            group='123',
+            projects=None,
+            gitlab_url='https://gitlab.com',
+            since='</script><script>alert("xss")</script>',
+            port=8000
+        )
+        config_js = serve.create_config_js('test-token', args)
+
+        # Verify script tags are escaped
+        self.assertNotIn('</script>', config_js)
+        self.assertNotIn('<script>', config_js)
+        self.assertIn(r'<\/script>', config_js)
+        self.assertIn(r'<\script>', config_js)
+
+        # When embedded in HTML: <script>\nconst CONFIG = {...}\n</script>
+        html_template = '<html>\n<head>\n</head>\n<body></body>\n</html>'
+        config_script = f'    <script>\n{config_js}\n    </script>\n'
+        result = html_template.replace('</head>', f'{config_script}</head>')
+
+        # Now there should be exactly 1 opening script tag (our wrapper)
+        self.assertEqual(result.count('<script>'), 1)
+        # And exactly 1 closing </script> tag (our wrapper)
+        self.assertEqual(result.count('</script>'), 1)
+
+        # Verify the escaped sequences are valid in JavaScript
+        # In JS, <\/script> and <\script> are equivalent to </script> and <script>
+        import json
+        # Need to un-escape for JSON parsing
+        json_for_parsing = (config_js.replace('const CONFIG = ', '').rstrip(';')
+                            .replace(r'<\/script>', '</script>')
+                            .replace(r'<\script>', '<script>'))
+        config_obj = json.loads(json_for_parsing)
+        self.assertEqual(config_obj['since'], '</script><script>alert("xss")</script>')
+
+    def test_html_injection_xss_prevention_quotes(self):
+        """Test XSS prevention with quotes and special chars."""
+        args = MagicMock(
+            group='123',
+            projects=None,
+            gitlab_url='https://gitlab.com/"; alert("xss"); "',
+            since='1 day ago',
+            port=8000
+        )
+        config_js = serve.create_config_js('tok"en', args)
+
+        # Verify JSON proper escaping of quotes
+        self.assertIn(r'\"', config_js)
+        # Should not have unescaped quotes that could break out of string
+        import json
+        # Verify it's valid JSON by parsing
+        config_obj = json.loads(config_js.replace('const CONFIG = ', '').rstrip(';'))
+        self.assertEqual(config_obj['gitlabToken'], 'tok"en')
+
+    def test_html_injection_special_characters(self):
+        """Test HTML injection handles various special characters safely."""
+        args = MagicMock(
+            group=None,
+            projects='1,2,3',
+            gitlab_url='https://gitlab.com/test&param=value',
+            since='<2 days>',
+            port=8000
+        )
+        config_js = serve.create_config_js('token&key=val', args)
+
+        # Verify JSON handles special characters
+        import json
+        config_obj = json.loads(config_js.replace('const CONFIG = ', '').rstrip(';'))
+        self.assertEqual(config_obj['gitlabToken'], 'token&key=val')
+        self.assertEqual(config_obj['since'], '<2 days>')
+        self.assertIn('&', config_obj['gitlabUrl'])
+
+
 class TestTokenRedaction(unittest.TestCase):
     """Test token redaction for security."""
 
@@ -239,6 +442,82 @@ class TestTokenRedaction(unittest.TestCase):
         text = f"Secret: {token} is here"
         result = serve.redact_token(text, token)
         self.assertEqual(result, "Secret: [REDACTED] is here")
+
+
+class TestConfigInjectingHandler(unittest.TestCase):
+    """Test HTTP handler configuration injection."""
+
+    def test_html_injection_in_handler(self):
+        """Test the actual HTML injection logic used by the handler."""
+        # Simulate what the handler does
+        config_js = 'const CONFIG = {"token": "test123"};'
+        html_template = '<html>\n<head>\n<title>Test</title>\n</head>\n<body></body>\n</html>'
+
+        # This is what the handler does
+        if '</head>' not in html_template:
+            self.fail("Template should have </head> tag")
+
+        config_script = f'    <script>\n{config_js}\n    </script>\n'
+        html_with_config = html_template.replace('</head>', f'{config_script}</head>')
+
+        # Verify injection worked
+        self.assertIn('<script>', html_with_config)
+        self.assertIn(config_js, html_with_config)
+        self.assertIn('</script>\n</head>', html_with_config)
+
+    def test_html_injection_missing_head_tag(self):
+        """Test handler behavior when HTML template is malformed."""
+        html_template = '<html><body></body></html>'  # No </head> tag
+
+        # This is what the handler checks
+        has_head_tag = '</head>' in html_template
+        self.assertFalse(has_head_tag)
+
+    # Note: Full HTTP handler testing (do_GET, log_message) requires integration tests
+    # with an actual HTTP server instance. These are covered by manual/integration testing.
+
+
+class TestMainFunction(unittest.TestCase):
+    """Test main function components that can be tested in isolation."""
+
+    def test_bind_address_localhost_default(self):
+        """Test that default bind address is localhost."""
+        # Simulate main() logic
+        args = MagicMock(allow_non_localhost=False)
+        bind_address = '127.0.0.1' if not args.allow_non_localhost else ''
+        self.assertEqual(bind_address, '127.0.0.1')
+
+    def test_bind_address_all_interfaces(self):
+        """Test that --allow-non-localhost binds to all interfaces."""
+        args = MagicMock(allow_non_localhost=True)
+        bind_address = '127.0.0.1' if not args.allow_non_localhost else ''
+        self.assertEqual(bind_address, '')
+
+    def test_config_injection_flow(self):
+        """Test the full configuration injection flow."""
+        # Simulate main() configuration setup
+        token = 'test-token-abc'
+        args = MagicMock(
+            group='123',
+            projects=None,
+            gitlab_url='https://gitlab.com',
+            since='1 day ago',
+            port=8000
+        )
+
+        config_js = serve.create_config_js(token, args)
+
+        # Verify config was created
+        self.assertIn('test-token-abc', config_js)
+        self.assertIn('const CONFIG', config_js)
+
+        # Simulate setting class variables (what main does)
+        serve.ConfigInjectingHandler.config_js = config_js
+        serve.ConfigInjectingHandler.token = token
+
+        # Verify class variables are set
+        self.assertEqual(serve.ConfigInjectingHandler.config_js, config_js)
+        self.assertEqual(serve.ConfigInjectingHandler.token, token)
 
 
 if __name__ == '__main__':

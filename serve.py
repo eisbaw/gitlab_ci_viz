@@ -168,7 +168,20 @@ def validate_arguments(args):
 
 
 def create_config_js(token, args):
-    """Generate JavaScript configuration object using JSON serialization."""
+    r"""Generate JavaScript configuration object using JSON serialization.
+
+    Security: Escapes </script> and <script> to prevent XSS when embedding in HTML.
+    The HTML parser processes these tags before JavaScript runs, so even within
+    a JSON string, an unescaped </script> would close the containing <script> tag.
+
+    Threat Model:
+    - All input to this function comes from CLI args and glab token (no user input)
+    - Main risk: HTML parser interference when embedding JSON in <script> tag
+    - Mitigated by escaping HTML-significant sequences: </script> and <script>
+    - JavaScript will correctly interpret <\/script> as </script> in strings
+
+    Note: If user-controlled input ever flows here, additional escaping may be needed.
+    """
     config = {
         'gitlabToken': token,
         'gitlabUrl': args.gitlab_url,
@@ -184,7 +197,15 @@ def create_config_js(token, args):
         config['projectIds'] = project_ids
 
     # Use standard JSON serialization for proper escaping
-    return f'const CONFIG = {json.dumps(config, indent=2)};'
+    json_str = json.dumps(config, indent=2)
+
+    # Critical XSS prevention: escape </script> and <script> to prevent HTML injection
+    # Replace </script> with <\/script> and <script> with <\script>
+    # These are valid in JavaScript strings but won't be interpreted as tags by HTML parser
+    json_str = json_str.replace('</script>', r'<\/script>')
+    json_str = json_str.replace('<script>', r'<\script>')
+
+    return f'const CONFIG = {json_str};'
 
 
 class ConfigInjectingHandler(SimpleHTTPRequestHandler):
