@@ -25,9 +25,9 @@ from urllib.parse import urlparse
 # Configure logging to stderr with timestamp and level
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    stream=sys.stderr
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stderr,
 )
 
 
@@ -51,7 +51,7 @@ def redact_token(text, token):
     )
     if not text:
         return text  # Empty/None text is fine, nothing to redact
-    return text.replace(token, '[REDACTED]')
+    return text.replace(token, "[REDACTED]")
 
 
 def get_gitlab_token():
@@ -59,10 +59,7 @@ def get_gitlab_token():
     logging.debug("Executing 'glab auth token' command")
     try:
         result = subprocess.run(
-            ['glab', 'auth', 'token'],
-            capture_output=True,
-            text=True,
-            check=True
+            ["glab", "auth", "token"], capture_output=True, text=True, check=True
         )
         logging.debug("glab auth token command completed with exit code 0")
         token = result.stdout.strip()
@@ -103,17 +100,17 @@ def parse_time_spec(time_spec):
 
     # Try absolute ISO 8601 date/datetime first
     # Supports: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
-    iso_date_pattern = r'^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$'
+    iso_date_pattern = r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$"
     if re.match(iso_date_pattern, time_spec):
         try:
             # Parse and ensure we have a datetime object
-            if 'T' in time_spec:
+            if "T" in time_spec:
                 dt = datetime.fromisoformat(time_spec)
             else:
                 # Date only - set time to start of day
-                dt = datetime.fromisoformat(time_spec + 'T00:00:00')
+                dt = datetime.fromisoformat(time_spec + "T00:00:00")
             # Return in ISO 8601 format with Z suffix
-            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         except ValueError:
             raise ValueError(
                 f"Invalid date format: {time_spec}. "
@@ -121,13 +118,13 @@ def parse_time_spec(time_spec):
             )
 
     # Handle "last week" special case
-    if time_spec.lower() == 'last week':
+    if time_spec.lower() == "last week":
         dt = datetime.now(timezone.utc) - timedelta(weeks=1)
-        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Handle relative time: "N <unit> ago"
     # Examples: "2 days ago", "1 week ago", "3 hours ago"
-    relative_pattern = r'^(\d+)\s+(second|minute|hour|day|week)s?\s+ago$'
+    relative_pattern = r"^(\d+)\s+(second|minute|hour|day|week)s?\s+ago$"
     match = re.match(relative_pattern, time_spec.lower())
 
     if match:
@@ -136,16 +133,16 @@ def parse_time_spec(time_spec):
 
         # Map units to timedelta arguments
         unit_mapping = {
-            'second': 'seconds',
-            'minute': 'minutes',
-            'hour': 'hours',
-            'day': 'days',
-            'week': 'weeks'
+            "second": "seconds",
+            "minute": "minutes",
+            "hour": "hours",
+            "day": "days",
+            "week": "weeks",
         }
 
         delta_kwargs = {unit_mapping[unit]: amount}
         dt = datetime.now(timezone.utc) - timedelta(**delta_kwargs)
-        return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # If we get here, format is not supported
     raise ValueError(
@@ -157,64 +154,59 @@ def parse_arguments():
     """Parse command-line arguments."""
     logging.debug("Parsing command-line arguments")
     parser = argparse.ArgumentParser(
-        description='GitLab CI GANTT Visualizer Server',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        description="GitLab CI GANTT Visualizer Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Project selection (mutually exclusive)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        '--group',
-        type=str,
-        help='GitLab group ID to fetch projects from'
+        "--group", type=str, help="GitLab group ID to fetch projects from"
     )
     group.add_argument(
-        '--projects',
-        type=str,
-        help='Comma-separated list of project IDs'
+        "--projects", type=str, help="Comma-separated list of project IDs"
     )
 
     # Time range
     parser.add_argument(
-        '--since',
+        "--since",
         type=str,
         required=True,
-        help='Time range start (e.g., "2 days ago", "2025-01-10")'
+        help='Time range start (e.g., "2 days ago", "2025-01-10")',
     )
 
     # Server configuration
     parser.add_argument(
-        '--port',
-        type=int,
-        default=8000,
-        help='HTTP server port (default: 8000)'
+        "--port", type=int, default=8000, help="HTTP server port (default: 8000)"
     )
 
     parser.add_argument(
-        '--gitlab-url',
+        "--gitlab-url",
         type=str,
-        default='https://gitlab.com',
-        help='GitLab instance URL (default: https://gitlab.com)'
+        default="https://gitlab.com",
+        help="GitLab instance URL (default: https://gitlab.com)",
     )
 
     parser.add_argument(
-        '--allow-non-localhost',
-        action='store_true',
-        help='Allow serving on non-localhost addresses (INSECURE: token exposed to network)'
+        "--allow-non-localhost",
+        action="store_true",
+        help="Allow serving on non-localhost addresses (INSECURE: token exposed to network)",
     )
 
     parser.add_argument(
-        '--refresh-interval',
+        "--refresh-interval",
         type=int,
         default=60,
-        help='Auto-refresh interval in seconds (default: 60, 0 to disable)'
+        help="Auto-refresh interval in seconds (default: 60, 0 to disable)",
     )
 
     args = parser.parse_args()
 
     # Log parsed arguments at INFO level (without sensitive token)
-    logging.info(f"CLI arguments parsed: gitlab_url={args.gitlab_url}, "
-                 f"port={args.port}, since={args.since}")
+    logging.info(
+        f"CLI arguments parsed: gitlab_url={args.gitlab_url}, "
+        f"port={args.port}, since={args.since}"
+    )
     if args.group:
         logging.info(f"Target: group_id={args.group}")
     else:
@@ -234,18 +226,22 @@ def validate_arguments(args):
 
     # Validate refresh interval (0 to disable, max 86400 = 24 hours)
     if args.refresh_interval < 0 or args.refresh_interval > 86400:
-        logging.error(f"Invalid refresh interval {args.refresh_interval}. Must be 0-86400 seconds (0 disables auto-refresh, max 24 hours).")
+        logging.error(
+            f"Invalid refresh interval {args.refresh_interval}. Must be 0-86400 seconds (0 disables auto-refresh, max 24 hours)."
+        )
         sys.exit(1)
 
     # Validate GitLab URL
     parsed_url = urlparse(args.gitlab_url)
     if not parsed_url.scheme or not parsed_url.netloc:
-        logging.error(f"Invalid GitLab URL: {args.gitlab_url}. URL must include scheme (http/https) and hostname.")
+        logging.error(
+            f"Invalid GitLab URL: {args.gitlab_url}. URL must include scheme (http/https) and hostname."
+        )
         sys.exit(1)
 
     # Validate project IDs if provided
     if args.projects:
-        project_ids = [p.strip() for p in args.projects.split(',')]
+        project_ids = [p.strip() for p in args.projects.split(",")]
         if not all(p for p in project_ids):
             logging.error("Project IDs list contains empty values")
             sys.exit(1)
@@ -277,20 +273,20 @@ def create_config_js(token, args):
     Note: If user-controlled input ever flows here, additional escaping may be needed.
     """
     config = {
-        'gitlabToken': token,
-        'gitlabUrl': args.gitlab_url,
-        'since': args.since,
-        'updatedAfter': args.updated_after,
-        'port': args.port,
-        'refreshInterval': args.refresh_interval
+        "gitlabToken": token,
+        "gitlabUrl": args.gitlab_url,
+        "since": args.since,
+        "updatedAfter": args.updated_after,
+        "port": args.port,
+        "refreshInterval": args.refresh_interval,
     }
 
     if args.group:
-        config['groupId'] = args.group
+        config["groupId"] = args.group
     else:
         # Convert comma-separated string to array
-        project_ids = [pid.strip() for pid in args.projects.split(',')]
-        config['projectIds'] = project_ids
+        project_ids = [pid.strip() for pid in args.projects.split(",")]
+        config["projectIds"] = project_ids
 
     # Use standard JSON serialization for proper escaping
     json_str = json.dumps(config, indent=2)
@@ -298,10 +294,10 @@ def create_config_js(token, args):
     # Critical XSS prevention: escape </script> and <script> to prevent HTML injection
     # Replace </script> with <\/script> and <script> with <\script>
     # These are valid in JavaScript strings but won't be interpreted as tags by HTML parser
-    json_str = json_str.replace('</script>', r'<\/script>')
-    json_str = json_str.replace('<script>', r'<\script>')
+    json_str = json_str.replace("</script>", r"<\/script>")
+    json_str = json_str.replace("<script>", r"<\script>")
 
-    return f'const CONFIG = {json_str};'
+    return f"const CONFIG = {json_str};"
 
 
 def create_handler(config_js, token):
@@ -314,6 +310,7 @@ def create_handler(config_js, token):
     Returns:
         Handler class with config_js and token bound as instance attributes
     """
+
     class ConfigInjectingHandler(SimpleHTTPRequestHandler):
         """HTTP request handler that injects configuration into index.html."""
 
@@ -325,29 +322,31 @@ def create_handler(config_js, token):
 
         def do_GET(self):
             """Handle GET requests, injecting config into index.html."""
-            if self.path == '/' or self.path == '/index.html':
+            if self.path == "/" or self.path == "/index.html":
                 # Serve index.html with injected config
                 self.send_response(200)
-                self.send_header('Content-type', 'text/html')
+                self.send_header("Content-type", "text/html")
                 self.end_headers()
 
                 # Read index.html template
-                index_path = Path(__file__).parent / 'index.html'
+                index_path = Path(__file__).parent / "index.html"
                 try:
-                    with open(index_path, 'r', encoding='utf-8') as f:
+                    with open(index_path, "r", encoding="utf-8") as f:
                         html_content = f.read()
 
                     # Validate HTML template has injection point
-                    if '</head>' not in html_content:
+                    if "</head>" not in html_content:
                         logging.error("index.html has no closing </head> tag")
                         self.send_error(500, "Invalid HTML template - missing </head>")
                         return
 
                     # Inject config as a <script> tag before closing </head>
-                    config_script = f'    <script>\n{self.config_js}\n    </script>\n'
-                    html_with_config = html_content.replace('</head>', f'{config_script}</head>')
+                    config_script = f"    <script>\n{self.config_js}\n    </script>\n"
+                    html_with_config = html_content.replace(
+                        "</head>", f"{config_script}</head>"
+                    )
 
-                    self.wfile.write(html_with_config.encode('utf-8'))
+                    self.wfile.write(html_with_config.encode("utf-8"))
                 except FileNotFoundError as e:
                     error_msg = redact_token(str(e), self.token)
                     logging.error(f"index.html not found at {index_path}")
@@ -373,12 +372,12 @@ def main():
     validate_arguments(args)
 
     # Security: Enforce localhost-only binding unless explicitly overridden
-    bind_address = '127.0.0.1'
+    bind_address = "127.0.0.1"
     if args.allow_non_localhost:
         logging.warning("⚠️  SECURITY WARNING: Binding to all interfaces (0.0.0.0)")
         logging.warning("⚠️  GitLab token will be exposed to your network!")
         logging.warning("⚠️  Only use --allow-non-localhost in trusted networks")
-        bind_address = ''
+        bind_address = ""
     else:
         logging.info("Binding to localhost only (127.0.0.1) for security")
 
@@ -424,5 +423,5 @@ def main():
         print("Server stopped.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -31,7 +31,8 @@ benchmark:
 
 # Run linting and code quality checks
 lint:
-    @echo "Linting not yet configured"
+    ruff check .
+    ruff format --check .
 
 # Start development server
 run *ARGS:

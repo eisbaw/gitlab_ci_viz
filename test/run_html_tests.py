@@ -18,9 +18,11 @@ try:
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
+
     SELENIUM_AVAILABLE = True
 except ImportError:
     SELENIUM_AVAILABLE = False
+
 
 def serve_files(port=8888):
     """Start a simple HTTP server to serve test files."""
@@ -37,6 +39,7 @@ def serve_files(port=8888):
 
     with socketserver.TCPServer(("", port), Handler) as httpd:
         httpd.serve_forever()
+
 
 def run_test_in_browser(test_file, port=8888):
     """Run a single HTML test file in headless browser."""
@@ -60,9 +63,7 @@ def run_test_in_browser(test_file, port=8888):
 
         # Wait for tests to complete (look for summary div)
         wait = WebDriverWait(driver, 30)
-        summary = wait.until(
-            EC.presence_of_element_located((By.CLASS_NAME, "summary"))
-        )
+        summary = wait.until(EC.presence_of_element_located((By.CLASS_NAME, "summary")))
 
         # Get test results
         summary_text = summary.text
@@ -91,6 +92,7 @@ def run_test_in_browser(test_file, port=8888):
         if driver:
             driver.quit()
 
+
 def main():
     """Main test runner."""
     # Start HTTP server in background thread
@@ -106,9 +108,9 @@ def main():
     ]
 
     if not SELENIUM_AVAILABLE:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("MANUAL TESTING REQUIRED")
-        print("="*60)
+        print("=" * 60)
         print("\nSelenium is not available. To run JavaScript tests manually:")
         print("\n1. Start the server:")
         print("   python serve.py --group 123 --since '1 day ago'")
@@ -116,7 +118,7 @@ def main():
         for test_file in test_files:
             print(f"   http://localhost:8000/test/{test_file}")
         print("\n3. Verify all tests show green checkmarks")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
         return 0
 
     # Run tests
@@ -126,14 +128,15 @@ def main():
             all_passed = False
 
     # Print final result
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     if all_passed:
         print("✓ All HTML tests passed!")
     else:
         print("✗ Some HTML tests failed")
-    print("="*60)
+    print("=" * 60)
 
     return 0 if all_passed else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

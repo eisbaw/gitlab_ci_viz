@@ -6,6 +6,7 @@ pkgs.mkShell {
     python3
     python3Packages.pytest
     python3Packages.pytest-cov
+    ruff
 
     # Performance testing dependencies
     # Browser required because Performance API tests must run in real browser environment

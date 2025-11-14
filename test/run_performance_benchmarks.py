@@ -25,23 +25,25 @@ def get_git_commit_hash():
     """
     try:
         result = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ["git", "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             check=True,
-            cwd=Path(__file__).parent.parent
+            cwd=Path(__file__).parent.parent,
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Failed to get git commit hash: {e.stderr}") from e
     except FileNotFoundError:
-        raise RuntimeError("git command not found - check nix-shell environment") from None
+        raise RuntimeError(
+            "git command not found - check nix-shell environment"
+        ) from None
 
 
 def run_benchmarks():
     """Run performance benchmarks in headless Chrome"""
     # Get test file path
-    test_file = Path(__file__).parent / 'test-performance-benchmarks.html'
+    test_file = Path(__file__).parent / "test-performance-benchmarks.html"
     if not test_file.exists():
         print(f"Error: Test file not found: {test_file}")
         return False
@@ -50,10 +52,10 @@ def run_benchmarks():
 
     # Configure headless Chrome
     chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
 
     print("Starting headless Chrome...")
     driver = None
@@ -81,9 +83,6 @@ def run_benchmarks():
 
         print("\nBenchmarks complete!")
 
-        # Extract results from page
-        results_div = driver.find_element(By.ID, "results")
-
         # Get summary
         summary = driver.find_element(By.CLASS_NAME, "summary")
         print("\n" + "=" * 80)
@@ -101,7 +100,7 @@ def run_benchmarks():
         for result in test_results:
             print(result.text)
             print("-" * 80)
-            if 'FAIL' in result.text:
+            if "FAIL" in result.text:
                 all_passed = False
 
         # Get metadata
@@ -123,6 +122,6 @@ def run_benchmarks():
             driver.quit()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     success = run_benchmarks()
     sys.exit(0 if success else 1)

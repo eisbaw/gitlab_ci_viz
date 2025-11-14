@@ -21,31 +21,34 @@ class TestTimeSpecParsing(unittest.TestCase):
 
     def test_parse_absolute_date_only(self):
         """Test parsing ISO 8601 date (YYYY-MM-DD)."""
-        result = serve.parse_time_spec('2025-01-10')
-        self.assertEqual(result, '2025-01-10T00:00:00Z')
+        result = serve.parse_time_spec("2025-01-10")
+        self.assertEqual(result, "2025-01-10T00:00:00Z")
 
     def test_parse_absolute_datetime(self):
         """Test parsing ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS)."""
-        result = serve.parse_time_spec('2025-01-10T14:30:00')
-        self.assertEqual(result, '2025-01-10T14:30:00Z')
+        result = serve.parse_time_spec("2025-01-10T14:30:00")
+        self.assertEqual(result, "2025-01-10T14:30:00Z")
 
     def test_parse_absolute_date_with_whitespace(self):
         """Test parsing with leading/trailing whitespace."""
-        result = serve.parse_time_spec('  2025-01-10  ')
-        self.assertEqual(result, '2025-01-10T00:00:00Z')
+        result = serve.parse_time_spec("  2025-01-10  ")
+        self.assertEqual(result, "2025-01-10T00:00:00Z")
 
     def test_parse_invalid_iso_date(self):
         """Test that invalid ISO date raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
-            serve.parse_time_spec('2025-13-01')  # Invalid month
-        self.assertIn('Invalid date format', str(ctx.exception))
+            serve.parse_time_spec("2025-13-01")  # Invalid month
+        self.assertIn("Invalid date format", str(ctx.exception))
 
     def test_parse_relative_days_ago(self):
         """Test parsing '2 days ago'."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('2 days ago')
+
+        result = serve.parse_time_spec("2 days ago")
         # Parse result and verify it's approximately 2 days ago
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(days=2)
         # Allow 5 second tolerance for test execution time
         delta = abs((result_dt - expected_dt).total_seconds())
@@ -54,8 +57,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_relative_week_ago(self):
         """Test parsing '1 week ago'."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('1 week ago')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("1 week ago")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -63,8 +69,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_relative_plural_weeks(self):
         """Test parsing '2 weeks ago' (plural form)."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('2 weeks ago')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("2 weeks ago")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(weeks=2)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -72,8 +81,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_relative_hours_ago(self):
         """Test parsing '3 hours ago'."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('3 hours ago')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("3 hours ago")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(hours=3)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -81,8 +93,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_relative_minutes_ago(self):
         """Test parsing '30 minutes ago'."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('30 minutes ago')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("30 minutes ago")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(minutes=30)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -90,8 +105,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_last_week_keyword(self):
         """Test parsing 'last week' special keyword."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('last week')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("last week")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -99,8 +117,11 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_last_week_case_insensitive(self):
         """Test that 'last week' is case insensitive."""
         from datetime import datetime, timedelta, timezone
-        result = serve.parse_time_spec('LAST WEEK')
-        result_dt = datetime.strptime(result, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+
+        result = serve.parse_time_spec("LAST WEEK")
+        result_dt = datetime.strptime(result, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         expected_dt = datetime.now(timezone.utc) - timedelta(weeks=1)
         delta = abs((result_dt - expected_dt).total_seconds())
         self.assertLess(delta, 5)
@@ -108,77 +129,67 @@ class TestTimeSpecParsing(unittest.TestCase):
     def test_parse_unsupported_format_random_text(self):
         """Test that unsupported format raises ValueError with helpful message."""
         with self.assertRaises(ValueError) as ctx:
-            serve.parse_time_spec('yesterday')
+            serve.parse_time_spec("yesterday")
         error_msg = str(ctx.exception)
-        self.assertIn('Time format not supported', error_msg)
-        self.assertIn('2 days ago', error_msg)
-        self.assertIn('2025-01-10', error_msg)
-        self.assertIn('last week', error_msg)
+        self.assertIn("Time format not supported", error_msg)
+        self.assertIn("2 days ago", error_msg)
+        self.assertIn("2025-01-10", error_msg)
+        self.assertIn("last week", error_msg)
 
     def test_parse_unsupported_format_invalid_relative(self):
         """Test invalid relative format."""
         with self.assertRaises(ValueError) as ctx:
-            serve.parse_time_spec('2 months ago')  # months not supported
-        self.assertIn('Time format not supported', str(ctx.exception))
+            serve.parse_time_spec("2 months ago")  # months not supported
+        self.assertIn("Time format not supported", str(ctx.exception))
 
     def test_parse_unsupported_format_missing_ago(self):
         """Test relative format without 'ago' suffix."""
         with self.assertRaises(ValueError) as ctx:
-            serve.parse_time_spec('2 days')
-        self.assertIn('Time format not supported', str(ctx.exception))
+            serve.parse_time_spec("2 days")
+        self.assertIn("Time format not supported", str(ctx.exception))
 
     def test_parse_unsupported_format_american_date(self):
         """Test that American date format is not supported."""
         with self.assertRaises(ValueError) as ctx:
-            serve.parse_time_spec('01/10/2025')
-        self.assertIn('Time format not supported', str(ctx.exception))
+            serve.parse_time_spec("01/10/2025")
+        self.assertIn("Time format not supported", str(ctx.exception))
 
 
 class TestGitLabToken(unittest.TestCase):
     """Test GitLab token acquisition."""
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_get_gitlab_token_success(self, mock_run):
         """Test successful token retrieval."""
-        mock_run.return_value = MagicMock(
-            stdout='glpat-abc123xyz789\n',
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="glpat-abc123xyz789\n", returncode=0)
         token = serve.get_gitlab_token()
-        self.assertEqual(token, 'glpat-abc123xyz789')
+        self.assertEqual(token, "glpat-abc123xyz789")
         mock_run.assert_called_once_with(
-            ['glab', 'auth', 'token'],
-            capture_output=True,
-            text=True,
-            check=True
+            ["glab", "auth", "token"], capture_output=True, text=True, check=True
         )
 
-    @patch('subprocess.run')
-    @patch('sys.exit')
+    @patch("subprocess.run")
+    @patch("sys.exit")
     def test_get_gitlab_token_empty(self, mock_exit, mock_run):
         """Test handling of empty token output."""
-        mock_run.return_value = MagicMock(
-            stdout='',
-            returncode=0
-        )
+        mock_run.return_value = MagicMock(stdout="", returncode=0)
         serve.get_gitlab_token()
         mock_exit.assert_called_once_with(1)
 
-    @patch('subprocess.run')
-    @patch('sys.exit')
+    @patch("subprocess.run")
+    @patch("sys.exit")
     def test_get_gitlab_token_command_fails(self, mock_exit, mock_run):
         """Test handling of glab command failure (CalledProcessError)."""
         import subprocess
+
         mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1,
-            cmd=['glab', 'auth', 'token'],
-            stderr='authentication failed'
+            returncode=1, cmd=["glab", "auth", "token"], stderr="authentication failed"
         )
         serve.get_gitlab_token()
         mock_exit.assert_called_once_with(1)
 
-    @patch('subprocess.run')
-    @patch('sys.exit')
+    @patch("subprocess.run")
+    @patch("sys.exit")
     def test_get_gitlab_token_command_not_found(self, mock_exit, mock_run):
         """Test handling of missing glab command (FileNotFoundError)."""
         mock_run.side_effect = FileNotFoundError("glab not found")
@@ -191,88 +202,83 @@ class TestArgumentParsing(unittest.TestCase):
 
     def test_parse_arguments_with_group(self):
         """Test parsing with --group argument."""
-        test_args = [
-            'serve.py',
-            '--group', '12345',
-            '--since', '2 days ago'
-        ]
-        with patch('sys.argv', test_args):
+        test_args = ["serve.py", "--group", "12345", "--since", "2 days ago"]
+        with patch("sys.argv", test_args):
             args = serve.parse_arguments()
-            self.assertEqual(args.group, '12345')
+            self.assertEqual(args.group, "12345")
             self.assertIsNone(args.projects)
-            self.assertEqual(args.since, '2 days ago')
+            self.assertEqual(args.since, "2 days ago")
             self.assertEqual(args.port, 8000)
-            self.assertEqual(args.gitlab_url, 'https://gitlab.com')
+            self.assertEqual(args.gitlab_url, "https://gitlab.com")
 
     def test_parse_arguments_with_projects(self):
         """Test parsing with --projects argument."""
-        test_args = [
-            'serve.py',
-            '--projects', '100,200,300',
-            '--since', '2025-01-10'
-        ]
-        with patch('sys.argv', test_args):
+        test_args = ["serve.py", "--projects", "100,200,300", "--since", "2025-01-10"]
+        with patch("sys.argv", test_args):
             args = serve.parse_arguments()
             self.assertIsNone(args.group)
-            self.assertEqual(args.projects, '100,200,300')
-            self.assertEqual(args.since, '2025-01-10')
+            self.assertEqual(args.projects, "100,200,300")
+            self.assertEqual(args.since, "2025-01-10")
 
     def test_parse_arguments_with_custom_port(self):
         """Test parsing with custom port."""
         test_args = [
-            'serve.py',
-            '--group', '12345',
-            '--since', '1 week ago',
-            '--port', '9000'
+            "serve.py",
+            "--group",
+            "12345",
+            "--since",
+            "1 week ago",
+            "--port",
+            "9000",
         ]
-        with patch('sys.argv', test_args):
+        with patch("sys.argv", test_args):
             args = serve.parse_arguments()
             self.assertEqual(args.port, 9000)
 
     def test_parse_arguments_with_custom_gitlab_url(self):
         """Test parsing with custom GitLab URL."""
         test_args = [
-            'serve.py',
-            '--group', '12345',
-            '--since', '1 day ago',
-            '--gitlab-url', 'https://gitlab.example.com'
+            "serve.py",
+            "--group",
+            "12345",
+            "--since",
+            "1 day ago",
+            "--gitlab-url",
+            "https://gitlab.example.com",
         ]
-        with patch('sys.argv', test_args):
+        with patch("sys.argv", test_args):
             args = serve.parse_arguments()
-            self.assertEqual(args.gitlab_url, 'https://gitlab.example.com')
+            self.assertEqual(args.gitlab_url, "https://gitlab.example.com")
 
     def test_parse_arguments_both_group_and_projects_fails(self):
         """Test that providing both --group and --projects is rejected."""
         test_args = [
-            'serve.py',
-            '--group', '12345',
-            '--projects', '100,200',
-            '--since', '1 day ago'
+            "serve.py",
+            "--group",
+            "12345",
+            "--projects",
+            "100,200",
+            "--since",
+            "1 day ago",
         ]
-        with patch('sys.argv', test_args):
-            with patch('sys.stderr'):  # Suppress argparse error output
+        with patch("sys.argv", test_args):
+            with patch("sys.stderr"):  # Suppress argparse error output
                 with self.assertRaises(SystemExit):
                     serve.parse_arguments()
 
     def test_parse_arguments_missing_since_fails(self):
         """Test that missing required --since argument is rejected."""
-        test_args = [
-            'serve.py',
-            '--group', '12345'
-        ]
-        with patch('sys.argv', test_args):
-            with patch('sys.stderr'):  # Suppress argparse error output
+        test_args = ["serve.py", "--group", "12345"]
+        with patch("sys.argv", test_args):
+            with patch("sys.stderr"):  # Suppress argparse error output
                 with self.assertRaises(SystemExit):
                     serve.parse_arguments()
 
     def test_parse_arguments_missing_project_selection_fails(self):
         """Test that missing both --group and --projects is rejected."""
-        test_args = [
-            'serve.py',
-            '--since', '1 day ago'
-        ]
-        with patch('sys.argv', test_args):
-            with patch('sys.stderr'):  # Suppress argparse error output
+        test_args = ["serve.py", "--since", "1 day ago"]
+        with patch("sys.argv", test_args):
+            with patch("sys.stderr"):  # Suppress argparse error output
                 with self.assertRaises(SystemExit):
                     serve.parse_arguments()
 
@@ -283,15 +289,15 @@ class TestConfigGeneration(unittest.TestCase):
     def test_create_config_js_with_group(self):
         """Test config generation with group ID."""
         args = MagicMock(
-            group='12345',
+            group="12345",
             projects=None,
-            gitlab_url='https://gitlab.com',
-            since='2 days ago',
-            updated_after='2025-01-11T10:00:00Z',
+            gitlab_url="https://gitlab.com",
+            since="2 days ago",
+            updated_after="2025-01-11T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('test-token-123', args)
+        config_js = serve.create_config_js("test-token-123", args)
 
         # Verify config contains expected values (JSON format)
         self.assertIn('"gitlabToken": "test-token-123"', config_js)
@@ -301,20 +307,20 @@ class TestConfigGeneration(unittest.TestCase):
         self.assertIn('"refreshInterval": 60', config_js)
         self.assertIn('"port": 8000', config_js)
         self.assertIn('"groupId": "12345"', config_js)
-        self.assertNotIn('projectIds', config_js)
+        self.assertNotIn("projectIds", config_js)
 
     def test_create_config_js_with_projects(self):
         """Test config generation with project IDs."""
         args = MagicMock(
             group=None,
-            projects='100, 200, 300',
-            gitlab_url='https://gitlab.com',
-            since='2025-01-10',
-            updated_after='2025-01-10T00:00:00Z',
+            projects="100, 200, 300",
+            gitlab_url="https://gitlab.com",
+            since="2025-01-10",
+            updated_after="2025-01-10T00:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('test-token-456', args)
+        config_js = serve.create_config_js("test-token-456", args)
 
         # Verify config contains expected values (JSON format)
         self.assertIn('"gitlabToken": "test-token-456"', config_js)
@@ -322,18 +328,18 @@ class TestConfigGeneration(unittest.TestCase):
         self.assertIn('"100"', config_js)
         self.assertIn('"200"', config_js)
         self.assertIn('"300"', config_js)
-        self.assertNotIn('groupId', config_js)
+        self.assertNotIn("groupId", config_js)
 
     def test_create_config_js_escapes_quotes(self):
         """Test that quotes in values are properly escaped via JSON."""
         args = MagicMock(
-            group='123',
+            group="123",
             projects=None,
             gitlab_url='https://gitlab.com/test"quote',
-            since='1 day ago',
-            updated_after='2025-01-12T10:00:00Z',
+            since="1 day ago",
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
         config_js = serve.create_config_js('token"with"quotes', args)
 
@@ -345,60 +351,113 @@ class TestConfigGeneration(unittest.TestCase):
 class TestArgumentValidation(unittest.TestCase):
     """Test argument validation."""
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_port_low(self, mock_exit):
         """Test validation rejects port below range."""
-        args = MagicMock(port=0, gitlab_url='https://gitlab.com', projects='123', since='2 days ago', refresh_interval=60)
+        args = MagicMock(
+            port=0,
+            gitlab_url="https://gitlab.com",
+            projects="123",
+            since="2 days ago",
+            refresh_interval=60,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_port_high(self, mock_exit):
         """Test validation rejects port above range."""
-        args = MagicMock(port=70000, gitlab_url='https://gitlab.com', projects='123', since='2 days ago', refresh_interval=60)
+        args = MagicMock(
+            port=70000,
+            gitlab_url="https://gitlab.com",
+            projects="123",
+            since="2 days ago",
+            refresh_interval=60,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_gitlab_url(self, mock_exit):
         """Test validation rejects invalid URL."""
-        args = MagicMock(port=8000, gitlab_url='not-a-url', projects='123', since='2 days ago', refresh_interval=60)
+        args = MagicMock(
+            port=8000,
+            gitlab_url="not-a-url",
+            projects="123",
+            since="2 days ago",
+            refresh_interval=60,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_empty_project_ids(self, mock_exit):
         """Test validation rejects empty project IDs."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='100,,200', group=None, since='2 days ago', refresh_interval=60)
+        args = MagicMock(
+            port=8000,
+            gitlab_url="https://gitlab.com",
+            projects="100,,200",
+            group=None,
+            since="2 days ago",
+            refresh_interval=60,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
     def test_validate_valid_arguments(self):
         """Test validation accepts valid arguments."""
-        args = MagicMock(port=8080, gitlab_url='https://gitlab.com', projects='100,200', group=None, since='2 days ago', refresh_interval=60)
+        args = MagicMock(
+            port=8080,
+            gitlab_url="https://gitlab.com",
+            projects="100,200",
+            group=None,
+            since="2 days ago",
+            refresh_interval=60,
+        )
         # Should not raise or exit
         serve.validate_arguments(args)
         # Verify updated_after was set
-        self.assertTrue(hasattr(args, 'updated_after'))
+        self.assertTrue(hasattr(args, "updated_after"))
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_time_spec(self, mock_exit):
         """Test validation rejects invalid time specification."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='invalid time', refresh_interval=60)
+        args = MagicMock(
+            port=8000,
+            gitlab_url="https://gitlab.com",
+            projects="123",
+            group=None,
+            since="invalid time",
+            refresh_interval=60,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_refresh_interval_negative(self, mock_exit):
         """Test validation rejects negative refresh interval."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='1 day ago', refresh_interval=-1)
+        args = MagicMock(
+            port=8000,
+            gitlab_url="https://gitlab.com",
+            projects="123",
+            group=None,
+            since="1 day ago",
+            refresh_interval=-1,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
-    @patch('sys.exit')
+    @patch("sys.exit")
     def test_validate_invalid_refresh_interval_too_high(self, mock_exit):
         """Test validation rejects refresh interval above max."""
-        args = MagicMock(port=8000, gitlab_url='https://gitlab.com', projects='123', group=None, since='1 day ago', refresh_interval=90000)
+        args = MagicMock(
+            port=8000,
+            gitlab_url="https://gitlab.com",
+            projects="123",
+            group=None,
+            since="1 day ago",
+            refresh_interval=90000,
+        )
         serve.validate_arguments(args)
         mock_exit.assert_called_once_with(1)
 
@@ -419,26 +478,26 @@ class TestHTMLInjection(unittest.TestCase):
     def test_html_injection_basic(self):
         """Test basic HTML template injection."""
         args = MagicMock(
-            group='12345',
+            group="12345",
             projects=None,
-            gitlab_url='https://gitlab.com',
-            since='1 day ago',
-            updated_after='2025-01-12T10:00:00Z',
+            gitlab_url="https://gitlab.com",
+            since="1 day ago",
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('test-token', args)
+        config_js = serve.create_config_js("test-token", args)
 
         # Simulate HTML injection (what ConfigInjectingHandler does)
-        html_template = '<html>\n<head>\n</head>\n<body></body>\n</html>'
-        config_script = f'    <script>\n{config_js}\n    </script>\n'
-        result = html_template.replace('</head>', f'{config_script}</head>')
+        html_template = "<html>\n<head>\n</head>\n<body></body>\n</html>"
+        config_script = f"    <script>\n{config_js}\n    </script>\n"
+        result = html_template.replace("</head>", f"{config_script}</head>")
 
         # Verify injection point and structure
-        self.assertIn('<script>', result)
-        self.assertIn('const CONFIG =', result)
+        self.assertIn("<script>", result)
+        self.assertIn("const CONFIG =", result)
         self.assertIn('"gitlabToken": "test-token"', result)
-        self.assertIn('</script>\n</head>', result)
+        self.assertIn("</script>\n</head>", result)
 
     def test_html_injection_xss_prevention_script_tag(self):
         """Test XSS prevention with script tags in input.
@@ -449,30 +508,34 @@ class TestHTMLInjection(unittest.TestCase):
         args = MagicMock(
             group='<script>alert("xss")</script>',
             projects=None,
-            gitlab_url='https://gitlab.com',
-            since='1 day ago',
-            updated_after='2025-01-12T10:00:00Z',
+            gitlab_url="https://gitlab.com",
+            since="1 day ago",
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('test-token', args)
+        config_js = serve.create_config_js("test-token", args)
 
         # Verify script tags are escaped
-        self.assertNotIn('<script>', config_js)
-        self.assertNotIn('</script>', config_js)
-        self.assertIn(r'<\script>', config_js)
-        self.assertIn(r'<\/script>', config_js)
+        self.assertNotIn("<script>", config_js)
+        self.assertNotIn("</script>", config_js)
+        self.assertIn(r"<\script>", config_js)
+        self.assertIn(r"<\/script>", config_js)
 
         # The critical test: ensure quotes are escaped so string can't be broken out of
-        self.assertIn(r'\"', config_js)
+        self.assertIn(r"\"", config_js)
 
         # Verify by un-escaping and parsing (simulating what JavaScript does)
         import json
-        json_for_parsing = (config_js.replace('const CONFIG = ', '').rstrip(';')
-                            .replace(r'<\script>', '<script>')
-                            .replace(r'<\/script>', '</script>'))
+
+        json_for_parsing = (
+            config_js.replace("const CONFIG = ", "")
+            .rstrip(";")
+            .replace(r"<\script>", "<script>")
+            .replace(r"<\/script>", "</script>")
+        )
         config_obj = json.loads(json_for_parsing)
-        self.assertEqual(config_obj['groupId'], '<script>alert("xss")</script>')
+        self.assertEqual(config_obj["groupId"], '<script>alert("xss")</script>')
 
     def test_html_injection_xss_prevention_closing_script(self):
         """Test that script tags in input don't break the HTML structure.
@@ -482,82 +545,88 @@ class TestHTMLInjection(unittest.TestCase):
         The code must escape these to prevent HTML parser interference.
         """
         args = MagicMock(
-            group='123',
+            group="123",
             projects=None,
-            gitlab_url='https://gitlab.com',
+            gitlab_url="https://gitlab.com",
             since='</script><script>alert("xss")</script>',
-            updated_after='2025-01-12T10:00:00Z',
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('test-token', args)
+        config_js = serve.create_config_js("test-token", args)
 
         # Verify script tags are escaped
-        self.assertNotIn('</script>', config_js)
-        self.assertNotIn('<script>', config_js)
-        self.assertIn(r'<\/script>', config_js)
-        self.assertIn(r'<\script>', config_js)
+        self.assertNotIn("</script>", config_js)
+        self.assertNotIn("<script>", config_js)
+        self.assertIn(r"<\/script>", config_js)
+        self.assertIn(r"<\script>", config_js)
 
         # When embedded in HTML: <script>\nconst CONFIG = {...}\n</script>
-        html_template = '<html>\n<head>\n</head>\n<body></body>\n</html>'
-        config_script = f'    <script>\n{config_js}\n    </script>\n'
-        result = html_template.replace('</head>', f'{config_script}</head>')
+        html_template = "<html>\n<head>\n</head>\n<body></body>\n</html>"
+        config_script = f"    <script>\n{config_js}\n    </script>\n"
+        result = html_template.replace("</head>", f"{config_script}</head>")
 
         # Now there should be exactly 1 opening script tag (our wrapper)
-        self.assertEqual(result.count('<script>'), 1)
+        self.assertEqual(result.count("<script>"), 1)
         # And exactly 1 closing </script> tag (our wrapper)
-        self.assertEqual(result.count('</script>'), 1)
+        self.assertEqual(result.count("</script>"), 1)
 
         # Verify the escaped sequences are valid in JavaScript
         # In JS, <\/script> and <\script> are equivalent to </script> and <script>
         import json
+
         # Need to un-escape for JSON parsing
-        json_for_parsing = (config_js.replace('const CONFIG = ', '').rstrip(';')
-                            .replace(r'<\/script>', '</script>')
-                            .replace(r'<\script>', '<script>'))
+        json_for_parsing = (
+            config_js.replace("const CONFIG = ", "")
+            .rstrip(";")
+            .replace(r"<\/script>", "</script>")
+            .replace(r"<\script>", "<script>")
+        )
         config_obj = json.loads(json_for_parsing)
-        self.assertEqual(config_obj['since'], '</script><script>alert("xss")</script>')
+        self.assertEqual(config_obj["since"], '</script><script>alert("xss")</script>')
 
     def test_html_injection_xss_prevention_quotes(self):
         """Test XSS prevention with quotes and special chars."""
         args = MagicMock(
-            group='123',
+            group="123",
             projects=None,
             gitlab_url='https://gitlab.com/"; alert("xss"); "',
-            since='1 day ago',
-            updated_after='2025-01-12T10:00:00Z',
+            since="1 day ago",
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
         config_js = serve.create_config_js('tok"en', args)
 
         # Verify JSON proper escaping of quotes
-        self.assertIn(r'\"', config_js)
+        self.assertIn(r"\"", config_js)
         # Should not have unescaped quotes that could break out of string
         import json
+
         # Verify it's valid JSON by parsing
-        config_obj = json.loads(config_js.replace('const CONFIG = ', '').rstrip(';'))
-        self.assertEqual(config_obj['gitlabToken'], 'tok"en')
+        config_obj = json.loads(config_js.replace("const CONFIG = ", "").rstrip(";"))
+        self.assertEqual(config_obj["gitlabToken"], 'tok"en')
 
     def test_html_injection_special_characters(self):
         """Test HTML injection handles various special characters safely."""
         args = MagicMock(
             group=None,
-            projects='1,2,3',
-            gitlab_url='https://gitlab.com/test&param=value',
-            since='<2 days>',
-            updated_after='2025-01-11T10:00:00Z',
+            projects="1,2,3",
+            gitlab_url="https://gitlab.com/test&param=value",
+            since="<2 days>",
+            updated_after="2025-01-11T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
-        config_js = serve.create_config_js('token&key=val', args)
+        config_js = serve.create_config_js("token&key=val", args)
 
         # Verify JSON handles special characters
         import json
-        config_obj = json.loads(config_js.replace('const CONFIG = ', '').rstrip(';'))
-        self.assertEqual(config_obj['gitlabToken'], 'token&key=val')
-        self.assertEqual(config_obj['since'], '<2 days>')
-        self.assertIn('&', config_obj['gitlabUrl'])
+
+        config_obj = json.loads(config_js.replace("const CONFIG = ", "").rstrip(";"))
+        self.assertEqual(config_obj["gitlabToken"], "token&key=val")
+        self.assertEqual(config_obj["since"], "<2 days>")
+        self.assertIn("&", config_obj["gitlabUrl"])
 
 
 class TestTokenRedaction(unittest.TestCase):
@@ -610,46 +679,42 @@ class TestConfigInjectingHandler(unittest.TestCase):
         """Test the actual HTML injection logic used by the handler."""
         # Simulate what the handler does
         config_js = 'const CONFIG = {"token": "test123"};'
-        html_template = '<html>\n<head>\n<title>Test</title>\n</head>\n<body></body>\n</html>'
+        html_template = (
+            "<html>\n<head>\n<title>Test</title>\n</head>\n<body></body>\n</html>"
+        )
 
         # This is what the handler does
-        if '</head>' not in html_template:
+        if "</head>" not in html_template:
             self.fail("Template should have </head> tag")
 
-        config_script = f'    <script>\n{config_js}\n    </script>\n'
-        html_with_config = html_template.replace('</head>', f'{config_script}</head>')
+        config_script = f"    <script>\n{config_js}\n    </script>\n"
+        html_with_config = html_template.replace("</head>", f"{config_script}</head>")
 
         # Verify injection worked
-        self.assertIn('<script>', html_with_config)
+        self.assertIn("<script>", html_with_config)
         self.assertIn(config_js, html_with_config)
-        self.assertIn('</script>\n</head>', html_with_config)
+        self.assertIn("</script>\n</head>", html_with_config)
 
     def test_html_injection_missing_head_tag(self):
         """Test handler behavior when HTML template is malformed."""
-        html_template = '<html><body></body></html>'  # No </head> tag
+        html_template = "<html><body></body></html>"  # No </head> tag
 
         # This is what the handler checks
-        has_head_tag = '</head>' in html_template
+        has_head_tag = "</head>" in html_template
         self.assertFalse(has_head_tag)
 
     def test_handler_isolation(self):
         """Test that multiple handler instances are isolated from each other."""
         # Create two different handler classes with different configs
         config_js_1 = 'const CONFIG = {"token": "token1"};'
-        token_1 = 'token1'
+        token_1 = "token1"
         handler_class_1 = serve.create_handler(config_js_1, token_1)
 
         config_js_2 = 'const CONFIG = {"token": "token2"};'
-        token_2 = 'token2'
+        token_2 = "token2"
         handler_class_2 = serve.create_handler(config_js_2, token_2)
 
-        # Create mock request instances
-        mock_request = MagicMock()
-        mock_client_address = ('127.0.0.1', 8000)
-        mock_server = MagicMock()
-
-        # Create handler instances (note: will fail to initialize fully without proper socket)
-        # But we can test that the factory creates separate classes
+        # Test that the factory creates separate classes
         self.assertIsNot(handler_class_1, handler_class_2)
 
         # Verify the classes would produce different instances
@@ -668,34 +733,34 @@ class TestMainFunction(unittest.TestCase):
         """Test that default bind address is localhost."""
         # Simulate main() logic
         args = MagicMock(allow_non_localhost=False)
-        bind_address = '127.0.0.1' if not args.allow_non_localhost else ''
-        self.assertEqual(bind_address, '127.0.0.1')
+        bind_address = "127.0.0.1" if not args.allow_non_localhost else ""
+        self.assertEqual(bind_address, "127.0.0.1")
 
     def test_bind_address_all_interfaces(self):
         """Test that --allow-non-localhost binds to all interfaces."""
         args = MagicMock(allow_non_localhost=True)
-        bind_address = '127.0.0.1' if not args.allow_non_localhost else ''
-        self.assertEqual(bind_address, '')
+        bind_address = "127.0.0.1" if not args.allow_non_localhost else ""
+        self.assertEqual(bind_address, "")
 
     def test_config_injection_flow(self):
         """Test the full configuration injection flow."""
         # Simulate main() configuration setup
-        token = 'test-token-abc'
+        token = "test-token-abc"
         args = MagicMock(
-            group='123',
+            group="123",
             projects=None,
-            gitlab_url='https://gitlab.com',
-            since='1 day ago',
-            updated_after='2025-01-12T10:00:00Z',
+            gitlab_url="https://gitlab.com",
+            since="1 day ago",
+            updated_after="2025-01-12T10:00:00Z",
             port=8000,
-            refresh_interval=60
+            refresh_interval=60,
         )
 
         config_js = serve.create_config_js(token, args)
 
         # Verify config was created
-        self.assertIn('test-token-abc', config_js)
-        self.assertIn('const CONFIG', config_js)
+        self.assertIn("test-token-abc", config_js)
+        self.assertIn("const CONFIG", config_js)
 
         # Simulate creating handler class (what main does)
         handler_class = serve.create_handler(config_js, token)
@@ -706,5 +771,5 @@ class TestMainFunction(unittest.TestCase):
         self.assertTrue(callable(handler_class))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
