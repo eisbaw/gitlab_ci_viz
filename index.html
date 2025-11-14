@@ -275,6 +275,41 @@
         .filter-actions button:hover {
             background-color: #5a6268;
         }
+        .job-search-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+        .job-search-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .job-search-input input[type="text"] {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 3px;
+            font-size: 0.95em;
+            max-width: 300px;
+        }
+        .job-search-input input[type="text"]:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+        .job-search-input button {
+            padding: 6px 12px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .job-search-input button:hover {
+            background-color: #5a6268;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -313,6 +348,13 @@
             <div class="filter-actions">
                 <button id="clear-filters">Clear All</button>
                 <button id="reset-filters">Reset</button>
+            </div>
+        </div>
+        <div class="job-search-section">
+            <h3>Filter by Job Name</h3>
+            <div class="job-search-input">
+                <input type="text" id="job-search-input" placeholder="Search job names (e.g., 'build', 'test')...">
+                <button id="clear-job-search">Clear</button>
             </div>
         </div>
     </div>
@@ -361,10 +403,77 @@
             }
         };
 
+        // Job search state encapsulation
+        const JobSearchState = {
+            searchTerm: '',
+
+            set(term) {
+                if (typeof term !== 'string') {
+                    throw new TypeError(`JobSearchState.set() expects string, got ${typeof term}`);
+                }
+                this.searchTerm = term.toLowerCase().trim();
+            },
+
+            clear() {
+                this.searchTerm = '';
+            },
+
+            isEmpty() {
+                return this.searchTerm === '';
+            },
+
+            matches(jobName) {
+                if (this.isEmpty()) {
+                    return true; // No filter, match all
+                }
+                if (typeof jobName !== 'string') {
+                    console.warn('JobSearchState.matches() received non-string job name:', jobName);
+                    return false;
+                }
+                return jobName.toLowerCase().includes(this.searchTerm);
+            }
+        };
+
         // Store unfiltered data for re-filtering (vis.js DataSets are primary storage)
         let unfilteredPipelines = [];
         let unfilteredJobs = [];
         let projectMap = new Map();
+
+        /**
+         * Compute filtered data based on current filter state
+         * Single authoritative function for applying both pipeline status and job name filters
+         * @returns {Object} {filteredPipelines, filteredJobs}
+         */
+        function computeFilteredData() {
+            // Filter pipelines by status
+            const filteredPipelines = unfilteredPipelines.filter(pipeline => {
+                return FilterState.has(normalizeStatus(pipeline.status));
+            });
+
+            // Filter jobs by pipeline membership and job name
+            const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
+            const filteredJobs = unfilteredJobs.filter(job => {
+                // First check if job belongs to a filtered pipeline
+                if (!filteredPipelineIds.has(job.pipeline_id)) {
+                    return false;
+                }
+                // Then check if job name matches search term
+                return JobSearchState.matches(job.name);
+            });
+
+            // Log filtering results for observability
+            const jobsBeforeNameFilter = unfilteredJobs.filter(job =>
+                filteredPipelineIds.has(job.pipeline_id)
+            ).length;
+
+            console.log(
+                `Applied filters: ${unfilteredPipelines.length} pipelines → ${filteredPipelines.length} filtered | ` +
+                `${jobsBeforeNameFilter} jobs → ${filteredJobs.length} filtered ` +
+                `(search: '${JobSearchState.searchTerm || '(none)}')`
+            );
+
+            return { filteredPipelines, filteredJobs };
+        }
 
         /**
          * Normalize pipeline status to handle GitLab API inconsistencies
@@ -516,6 +625,35 @@
                 });
             }
 
+            // Job search input event handler
+            const jobSearchInput = document.getElementById('job-search-input');
+            if (jobSearchInput) {
+                // Debounce search to avoid too many re-renders while typing
+                let searchTimeout = null;
+                jobSearchInput.addEventListener('input', function() {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        JobSearchState.set(this.value);
+                        console.log('Job search term:', JobSearchState.searchTerm || '(empty)');
+                        applyFilters();
+                    }, 300); // 300ms debounce
+                });
+            }
+
+            // Clear job search button
+            const clearJobSearchButton = document.getElementById('clear-job-search');
+            if (clearJobSearchButton) {
+                clearJobSearchButton.addEventListener('click', function() {
+                    const input = document.getElementById('job-search-input');
+                    if (input) {
+                        input.value = '';
+                    }
+                    JobSearchState.clear();
+                    console.log('Job search cleared');
+                    applyFilters();
+                });
+            }
+
             console.log('Filter controls initialized');
         }
 
@@ -529,18 +667,8 @@
                 return;
             }
 
-            // Filter pipelines based on active filters
-            const filteredPipelines = unfilteredPipelines.filter(pipeline => {
-                return FilterState.has(normalizeStatus(pipeline.status));
-            });
-
-            console.log(`Filtered ${unfilteredPipelines.length} pipelines to ${filteredPipelines.length}`);
-
-            // Get jobs only for filtered pipelines
-            const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
-            const filteredJobs = unfilteredJobs.filter(job =>
-                filteredPipelineIds.has(job.pipeline_id)
-            );
+            // Use shared filter computation
+            const { filteredPipelines, filteredJobs } = computeFilteredData();
 
             // Transform filtered data
             const transformed = DataTransformer.transform(filteredPipelines, filteredJobs);
@@ -1016,13 +1144,8 @@
                 unfilteredPipelines = pipelines;
                 unfilteredJobs = jobs;
 
-                // Apply filters to get the data to display
-                const filteredPipelines = pipelines.filter(pipeline => {
-                    return FilterState.has(normalizeStatus(pipeline.status));
-                });
-
-                const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
-                const filteredJobs = jobs.filter(job => filteredPipelineIds.has(job.pipeline_id));
+                // Apply filters using shared computation function
+                const { filteredPipelines, filteredJobs } = computeFilteredData();
 
                 // Step 4: Transform to vis.js format (using filtered data)
                 showLoading('Transforming data for visualization...');
