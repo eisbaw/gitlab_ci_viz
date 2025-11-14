@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Window State Validation Tests</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .test-suite {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #ddd;
+        }
+        .test-case.pass {
+            border-left-color: #4CAF50;
+            background: #f1f8f4;
+        }
+        .test-case.fail {
+            border-left-color: #f44336;
+            background: #fef5f5;
+        }
+        .test-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .test-error {
+            color: #c62828;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .summary {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .summary.all-pass {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .summary.has-failures {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>Window State Validation Tests</h1>
+    <div id="test-output"></div>
+
+    <script>
+        /**
+         * Copy of validateWindowState function from index.html
+         * This should match the implementation exactly
+         */
+        function validateWindowState(savedWindow, items) {
+            // Validate savedWindow structure
+            if (!savedWindow || !savedWindow.start || !savedWindow.end) {
+                if (savedWindow) {
+                    console.warn('validateWindowState: Invalid savedWindow structure (missing start/end)');
+                }
+                return { valid: false, window: null, reason: 'no_saved_state' };
+            }
+
+            if (items.length === 0) {
+                console.warn('validateWindowState: No items to validate against');
+                return { valid: false, window: null, reason: 'empty_items' };
+            }
+
+            // Calculate actual data range from items with error handling
+            // Items can have 'start' and optionally 'end' properties
+            let minTime = Infinity;
+            let maxTime = -Infinity;
+            let validItemCount = 0;
+
+            items.forEach((item, index) => {
+                try {
+                    if (item.start) {
+                        const startTime = new Date(item.start).getTime();
+                        // Validate date parsing succeeded
+                        if (!isNaN(startTime)) {
+                            minTime = Math.min(minTime, startTime);
+                            maxTime = Math.max(maxTime, startTime);
+                            validItemCount++;
+                        }
+                    }
+                    if (item.end) {
+                        const endTime = new Date(item.end).getTime();
+                        if (!isNaN(endTime)) {
+                            maxTime = Math.max(maxTime, endTime);
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`validateWindowState: Skipping item ${index} due to invalid date: ${error.message}`);
+                }
+            });
+
+            // If no valid times found, warn and return null
+            if (minTime === Infinity || maxTime === -Infinity) {
+                console.warn(
+                    `validateWindowState: No valid time data found in ${items.length} items. ` +
+                    `Items may lack start/end properties or have malformed dates.`
+                );
+                return { valid: false, window: null, reason: 'no_valid_times' };
+            }
+
+            // Validate savedWindow timestamps
+            const windowStart = savedWindow.start.getTime();
+            const windowEnd = savedWindow.end.getTime();
+
+            if (isNaN(windowStart) || isNaN(windowEnd)) {
+                console.warn('validateWindowState: Saved window has invalid timestamps');
+                return { valid: false, window: null, reason: 'invalid_window_times' };
+            }
+
+            // Check if saved window intersects with data range
+            const hasOverlap = windowStart <= maxTime && windowEnd >= minTime;
+
+            if (!hasOverlap) {
+                console.warn(
+                    'validateWindowState: Saved window does not intersect with new data range. ' +
+                    `Saved: [${savedWindow.start.toISOString()} - ${savedWindow.end.toISOString()}], ` +
+                    `Data: [${new Date(minTime).toISOString()} - ${new Date(maxTime).toISOString()}]. ` +
+                    'Falling back to default view.'
+                );
+                return { valid: false, window: null, reason: 'no_overlap' };
+            }
+
+            // Check for meaningful intersection (at least 10% overlap with data range)
+            const dataRange = maxTime - minTime;
+            const overlapStart = Math.max(windowStart, minTime);
+            const overlapEnd = Math.min(windowEnd, maxTime);
+            const overlapDuration = overlapEnd - overlapStart;
+            const minOverlapDuration = dataRange * 0.1;
+
+            if (overlapDuration < minOverlapDuration) {
+                console.warn(
+                    'validateWindowState: Saved window has insufficient overlap with data. ' +
+                    `Overlap: ${Math.round(overlapDuration / 1000)}s, ` +
+                    `Minimum required: ${Math.round(minOverlapDuration / 1000)}s (10% of data range). ` +
+                    'Falling back to default view.'
+                );
+                return { valid: false, window: null, reason: 'insufficient_overlap' };
+            }
+
+            console.log(
+                `validateWindowState: Window valid. ` +
+                `Processed ${validItemCount} items with valid timestamps.`
+            );
+            return { valid: true, window: savedWindow, reason: 'valid' };
+        }
+
+        // Test framework
+        const tests = [];
+        let currentSuite = '';
+
+        function describe(suiteName, fn) {
+            currentSuite = suiteName;
+            fn();
+        }
+
+        function it(testName, fn) {
+            tests.push({ suite: currentSuite, name: testName, fn });
+        }
+
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message || 'Assertion failed');
+            }
+        }
+
+        function assertEqual(actual, expected, message) {
+            if (actual !== expected) {
+                throw new Error(
+                    message || `Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`
+                );
+            }
+        }
+
+        function assertFalse(value, message) {
+            if (value !== false) {
+                throw new Error(message || `Expected false but got ${JSON.stringify(value)}`);
+            }
+        }
+
+        function assertTrue(value, message) {
+            if (value !== true) {
+                throw new Error(message || `Expected true but got ${JSON.stringify(value)}`);
+            }
+        }
+
+        // Test Suite
+        describe('validateWindowState', () => {
+            it('returns invalid when savedWindow is null', () => {
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T10:30:00Z' }
+                ];
+                const result = validateWindowState(null, items);
+                assertFalse(result.valid, 'Should return invalid for null savedWindow');
+                assertEqual(result.reason, 'no_saved_state');
+            });
+
+            it('returns invalid when savedWindow is undefined', () => {
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T10:30:00Z' }
+                ];
+                const result = validateWindowState(undefined, items);
+                assertFalse(result.valid, 'Should return invalid for undefined savedWindow');
+                assertEqual(result.reason, 'no_saved_state');
+            });
+
+            it('returns invalid when items array is empty', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T11:00:00Z')
+                };
+                const result = validateWindowState(savedWindow, []);
+                assertFalse(result.valid, 'Should return invalid for empty items array');
+                assertEqual(result.reason, 'empty_items');
+            });
+
+            it('returns invalid when items have no start times', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T11:00:00Z')
+                };
+                const items = [
+                    { id: 1, content: 'No time data' },
+                    { id: 2, content: 'Also no time' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertFalse(result.valid, 'Should return invalid when items have no time data');
+                assertEqual(result.reason, 'no_valid_times');
+            });
+
+            it('returns valid when window exactly matches data range', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T11:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should return valid when ranges match');
+                assertEqual(result.window.start, savedWindow.start);
+                assertEqual(result.window.end, savedWindow.end);
+            });
+
+            it('returns valid when window contains data range', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T09:00:00Z'),
+                    end: new Date('2025-01-01T12:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should return valid when it contains data');
+                assertEqual(result.window.start, savedWindow.start);
+                assertEqual(result.window.end, savedWindow.end);
+            });
+
+            it('returns valid when window partially overlaps data range (start)', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T09:30:00Z'),
+                    end: new Date('2025-01-01T10:30:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should return valid when it overlaps at start');
+            });
+
+            it('returns valid when window partially overlaps data range (end)', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:30:00Z'),
+                    end: new Date('2025-01-01T11:30:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should return valid when it overlaps at end');
+            });
+
+            it('returns invalid when window is completely before data range', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T08:00:00Z'),
+                    end: new Date('2025-01-01T09:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertFalse(result.valid, 'Should return invalid when window is before data');
+                assertEqual(result.reason, 'no_overlap');
+            });
+
+            it('returns invalid when window is completely after data range', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T12:00:00Z'),
+                    end: new Date('2025-01-01T13:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertFalse(result.valid, 'Should return invalid when window is after data');
+                assertEqual(result.reason, 'no_overlap');
+            });
+
+            it('handles multiple items correctly', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:30:00Z'),
+                    end: new Date('2025-01-01T11:30:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T10:30:00Z' },
+                    { start: '2025-01-01T11:00:00Z', end: '2025-01-01T11:30:00Z' },
+                    { start: '2025-01-01T12:00:00Z', end: '2025-01-01T12:30:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should handle multiple items and find overlap');
+            });
+
+            it('handles items with only start time (no end)', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T11:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:30:00Z' } // No end time
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should handle items without end time');
+            });
+
+            it('returns valid when window touches data at boundary', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T09:00:00Z'),
+                    end: new Date('2025-01-01T10:00:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Window touching at boundary should be valid');
+            });
+
+            it('handles items spanning saved window', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:15:00Z'),
+                    end: new Date('2025-01-01T10:45:00Z')
+                };
+                const items = [
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should work when data spans entire window');
+            });
+
+            it('returns invalid when overlap is too small (less than 10%)', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T10:01:00Z') // 1 minute window
+                };
+                const items = [
+                    // Data range: 1 hour (10:00 to 11:00)
+                    { start: '2025-01-01T10:00:00Z', end: '2025-01-01T11:00:00Z' }
+                ];
+                // 1 minute overlap / 60 minute data range = 1.6% < 10% threshold
+                const result = validateWindowState(savedWindow, items);
+                assertFalse(result.valid, 'Should return invalid when overlap is less than 10%');
+                assertEqual(result.reason, 'insufficient_overlap');
+            });
+
+            it('handles malformed dates gracefully', () => {
+                const savedWindow = {
+                    start: new Date('2025-01-01T10:00:00Z'),
+                    end: new Date('2025-01-01T11:00:00Z')
+                };
+                const items = [
+                    { start: 'not-a-date', end: 'also-not-a-date' },
+                    { start: '2025-01-01T10:30:00Z', end: '2025-01-01T10:45:00Z' } // Valid item
+                ];
+                const result = validateWindowState(savedWindow, items);
+                assertTrue(result.valid, 'Should skip malformed dates and validate with good data');
+            });
+        });
+
+        // Run tests and display results
+        function runTests() {
+            const output = document.getElementById('test-output');
+            let html = '';
+            let totalTests = 0;
+            let passedTests = 0;
+            let failedTests = 0;
+
+            let currentSuiteName = '';
+
+            tests.forEach(test => {
+                if (test.suite !== currentSuiteName) {
+                    if (currentSuiteName !== '') {
+                        html += '</div>';
+                    }
+                    html += `<div class="test-suite"><h2>${test.suite}</h2>`;
+                    currentSuiteName = test.suite;
+                }
+
+                totalTests++;
+                let passed = false;
+                let error = null;
+
+                try {
+                    test.fn();
+                    passed = true;
+                    passedTests++;
+                } catch (e) {
+                    error = e.message;
+                    failedTests++;
+                }
+
+                const statusClass = passed ? 'pass' : 'fail';
+                const statusIcon = passed ? '✓' : '✗';
+                html += `<div class="test-case ${statusClass}">`;
+                html += `<div class="test-name">${statusIcon} ${test.name}</div>`;
+                if (error) {
+                    html += `<div class="test-error">Error: ${error}</div>`;
+                }
+                html += '</div>';
+            });
+
+            if (currentSuiteName !== '') {
+                html += '</div>';
+            }
+
+            const summaryClass = failedTests === 0 ? 'all-pass' : 'has-failures';
+            html += `<div class="summary ${summaryClass}">`;
+            html += `Tests: ${totalTests} | `;
+            html += `Passed: ${passedTests} | `;
+            html += `Failed: ${failedTests}`;
+            if (failedTests === 0) {
+                html += ' | All tests passed!';
+            }
+            html += '</div>';
+
+            output.innerHTML = html;
+
+            // Exit with error code if tests failed (for automation)
+            if (failedTests > 0) {
+                console.error(`${failedTests} test(s) failed`);
+            } else {
+                console.log('All tests passed!');
+            }
+        }
+
+        // Run tests when page loads
+        window.addEventListener('DOMContentLoaded', runTests);
+    </script>
+</body>
+</html>
