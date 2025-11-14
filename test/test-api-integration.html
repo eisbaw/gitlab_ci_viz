@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Integration Tests</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test {
+            margin: 15px 0;
+            padding: 15px;
+            border-left: 4px solid #ddd;
+            background: #fafafa;
+        }
+        .test.pass {
+            border-left-color: #4CAF50;
+            background: #f1f8f4;
+        }
+        .test.fail {
+            border-left-color: #f44336;
+            background: #fef1f0;
+        }
+        .test h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .test-result {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .test-result.pass {
+            color: #4CAF50;
+        }
+        .test-result.fail {
+            color: #f44336;
+        }
+        .test-details {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            background: #f5f5f5;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .summary {
+            background: #333;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+        .summary.all-pass {
+            background: #4CAF50;
+        }
+        .summary.has-fails {
+            background: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>API Integration Tests</h1>
+    <div id="test-output"></div>
+    <div id="summary" class="summary">Running tests...</div>
+
+    <!-- Load fixtures -->
+    <script src="fixtures-api-integration.js"></script>
+
+    <!-- Load modules under test -->
+    <script src="../static/logger.js"></script>
+    <script src="../static/api-client.js"></script>
+    <script src="../static/data-transformer.js"></script>
+
+    <script>
+        // Simple test framework
+        class TestRunner {
+            constructor() {
+                this.tests = [];
+                this.passed = 0;
+                this.failed = 0;
+            }
+
+            test(name, fn) {
+                this.tests.push({ name, fn });
+            }
+
+            async run() {
+                const output = document.getElementById('test-output');
+                const summary = document.getElementById('summary');
+
+                for (const test of this.tests) {
+                    const testDiv = document.createElement('div');
+                    testDiv.className = 'test';
+                    testDiv.innerHTML = `<h3>${test.name}</h3>`;
+
+                    try {
+                        await test.fn();
+                        testDiv.classList.add('pass');
+                        testDiv.innerHTML += '<div class="test-result pass">✓ PASSED</div>';
+                        this.passed++;
+                    } catch (error) {
+                        testDiv.classList.add('fail');
+                        testDiv.innerHTML += `
+                            <div class="test-result fail">✗ FAILED</div>
+                            <div class="test-details">${error.message}</div>
+                        `;
+                        this.failed++;
+                    }
+
+                    output.appendChild(testDiv);
+                }
+
+                // Update summary
+                const total = this.passed + this.failed;
+                summary.textContent = `Tests: ${total} | Passed: ${this.passed} | Failed: ${this.failed}`;
+                summary.className = this.failed === 0 ? 'summary all-pass' : 'summary has-fails';
+            }
+
+            assert(condition, message) {
+                if (!condition) {
+                    throw new Error(message || 'Assertion failed');
+                }
+            }
+
+            assertEqual(actual, expected, message) {
+                if (actual !== expected) {
+                    throw new Error(message || `Expected ${expected} but got ${actual}`);
+                }
+            }
+
+            assertArrayEqual(actual, expected, message) {
+                if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+                    throw new Error(message || `Arrays not equal.\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`);
+                }
+            }
+
+            assertGreaterThan(actual, threshold, message) {
+                if (actual <= threshold) {
+                    throw new Error(message || `Expected ${actual} to be greater than ${threshold}`);
+                }
+            }
+
+            assertLessThan(actual, threshold, message) {
+                if (actual >= threshold) {
+                    throw new Error(message || `Expected ${actual} to be less than ${threshold}`);
+                }
+            }
+
+            assertContains(array, item, message) {
+                if (!array.includes(item)) {
+                    throw new Error(message || `Expected array to contain ${item}`);
+                }
+            }
+        }
+
+        // Mock fetch for controlled testing
+        class MockFetch {
+            constructor() {
+                this.responses = new Map();
+                this.callCount = new Map();
+                this.delay = 0;
+                this.originalFetch = window.fetch;
+            }
+
+            mock(url, response, options = {}) {
+                this.responses.set(url, { response, options });
+                this.callCount.set(url, 0);
+            }
+
+            install() {
+                window.fetch = async (url, options) => {
+                    await new Promise(resolve => setTimeout(resolve, this.delay));
+
+                    const urlString = url.toString();
+                    const count = this.callCount.get(urlString) || 0;
+                    this.callCount.set(urlString, count + 1);
+
+                    for (const [mockUrl, config] of this.responses.entries()) {
+                        if (urlString.includes(mockUrl)) {
+                            const { response, options: mockOptions } = config;
+
+                            // Handle rate limit with retry logic
+                            if (mockOptions.rateLimitOnCall && count === mockOptions.rateLimitOnCall - 1) {
+                                return {
+                                    ok: false,
+                                    status: 429,
+                                    json: async () => API_FIXTURES.error_rateLimit,
+                                    headers: new Headers()
+                                };
+                            }
+
+                            // Handle error responses
+                            if (mockOptions.error) {
+                                return {
+                                    ok: false,
+                                    status: mockOptions.status || 500,
+                                    json: async () => response,
+                                    headers: new Headers()
+                                };
+                            }
+
+                            // Handle pagination
+                            let linkHeader = null;
+                            if (mockOptions.hasNextPage) {
+                                linkHeader = '<http://example.com?page=2>; rel="next"';
+                            }
+
+                            return {
+                                ok: true,
+                                status: 200,
+                                json: async () => response,
+                                headers: new Headers(linkHeader ? { 'Link': linkHeader } : {})
+                            };
+                        }
+                    }
+
+                    throw new Error(`No mock found for URL: ${urlString}`);
+                };
+            }
+
+            restore() {
+                window.fetch = this.originalFetch;
+            }
+
+            getCallCount(url) {
+                return this.callCount.get(url) || 0;
+            }
+        }
+
+        // Initialize test runner
+        const runner = new TestRunner();
+
+        // Setup mock CONFIG
+        window.CONFIG = {
+            gitlabToken: 'test-token',
+            gitlabUrl: 'https://gitlab.example.com',
+            groupId: null,
+            projectIds: [101, 102, 103],
+            since: '2 days ago'
+        };
+
+        // Test 1: Complete data flow
+        runner.test('Complete data flow: fetch projects → pipelines → jobs → transform', async () => {
+            const mock = new MockFetch();
+
+            // Mock project fetch
+            mock.mock('/api/v4/projects/101', API_FIXTURES.projects[0]);
+            mock.mock('/api/v4/projects/102', API_FIXTURES.projects[1]);
+            mock.mock('/api/v4/projects/103', API_FIXTURES.projects[2]);
+
+            // Mock pipeline fetch (single page)
+            mock.mock('/api/v4/projects/101/pipelines', [API_FIXTURES.pipelines_page1[0]]);
+            mock.mock('/api/v4/projects/102/pipelines', [API_FIXTURES.pipelines_page1[1]]);
+            mock.mock('/api/v4/projects/103/pipelines', []);
+
+            // Mock job fetch
+            mock.mock('/api/v4/projects/101/pipelines/1000/jobs', API_FIXTURES.jobs_pipeline_1000);
+            mock.mock('/api/v4/projects/102/pipelines/1001/jobs', API_FIXTURES.generateJobs(1001));
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+
+                // Fetch projects
+                const projects = await client.fetchProjects();
+                runner.assertEqual(projects.length, 3, 'Should fetch 3 projects');
+
+                // Fetch pipelines
+                const pipelines = await client.fetchPipelines(projects);
+                runner.assertEqual(pipelines.length, 2, 'Should fetch 2 pipelines (project 103 has 0)');
+
+                // Fetch jobs
+                const jobs = await client.fetchJobs(pipelines);
+                runner.assertEqual(jobs.length, 6, 'Should fetch 6 jobs total');
+
+                // Transform to vis.js format
+                const result = DataTransformer.transform(pipelines, jobs);
+                runner.assert(result.groups.length > 0, 'Should create groups');
+                runner.assert(result.items.length > 0, 'Should create items');
+
+                // Verify structure
+                runner.assert(result.groups.some(g => g.id.startsWith('user-')), 'Should have user groups');
+                runner.assert(result.groups.some(g => g.id.startsWith('pipeline-')), 'Should have pipeline groups');
+                runner.assert(result.items.some(i => i.id.startsWith('pipeline-item-')), 'Should have pipeline items');
+                runner.assert(result.items.some(i => i.id.startsWith('job-item-')), 'Should have job items');
+
+            } finally {
+                mock.restore();
+            }
+        });
+
+        // Test 2: Pagination across 3 pages
+        runner.test('Pagination: aggregate 30/30/10 items across 3 pages', async () => {
+            const mock = new MockFetch();
+
+            // Mock paginated pipelines
+            const baseUrl = '/api/v4/projects/101/pipelines';
+            mock.mock(`${baseUrl}?per_page=100&page=1`, API_FIXTURES.pipelines_page1, { hasNextPage: true });
+            mock.mock(`${baseUrl}?per_page=100&page=2`, API_FIXTURES.pipelines_page2, { hasNextPage: true });
+            mock.mock(`${baseUrl}?per_page=100&page=3`, API_FIXTURES.pipelines_page3, { hasNextPage: false });
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+                const result = await client._requestPaginated('/projects/101/pipelines', {});
+
+                runner.assertEqual(result.length, 70, 'Should aggregate 70 pipelines (30+30+10)');
+                runner.assertEqual(result[0].id, 1000, 'First item from page 1');
+                runner.assertEqual(result[29].id, 1029, 'Last item from page 1');
+                runner.assertEqual(result[30].id, 2000, 'First item from page 2');
+                runner.assertEqual(result[59].id, 2029, 'Last item from page 2');
+                runner.assertEqual(result[60].id, 3000, 'First item from page 3');
+                runner.assertEqual(result[69].id, 3009, 'Last item from page 3');
+
+            } finally {
+                mock.restore();
+            }
+        });
+
+        // Test 3: Rate limit with backoff and retry
+        runner.test('Rate limit: trigger on page 2, backoff, retry, success', async () => {
+            const mock = new MockFetch();
+
+            const baseUrl = '/api/v4/projects/101/pipelines';
+
+            // Page 1 succeeds
+            mock.mock(`${baseUrl}?per_page=100&page=1`, API_FIXTURES.pipelines_page1.slice(0, 5), { hasNextPage: true });
+
+            // Page 2 fails with rate limit on first call, succeeds on retry
+            mock.mock(`${baseUrl}?per_page=100&page=2`, API_FIXTURES.pipelines_page2.slice(0, 5), {
+                rateLimitOnCall: 1,
+                hasNextPage: false
+            });
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+
+                // First call to page 2 should fail with rate limit
+                let rateLimitCaught = false;
+                try {
+                    await client._requestPaginated('/projects/101/pipelines', {});
+                } catch (error) {
+                    if (error.errorType === 'RateLimitError') {
+                        rateLimitCaught = true;
+                    }
+                }
+
+                runner.assert(rateLimitCaught, 'Should catch RateLimitError');
+
+                // Retry should succeed (mock doesn't rate limit on second call)
+                const result = await client._requestPaginated('/projects/101/pipelines', {});
+                runner.assertEqual(result.length, 5, 'Should get page 1 results after retry');
+
+            } finally {
+                mock.restore();
+            }
+        });
+
+        // Test 4: Partial failure - one project fails, others succeed
+        runner.test('Partial failure: project 102 fails, projects 101 and 103 succeed', async () => {
+            const mock = new MockFetch();
+
+            // Mock project fetch
+            mock.mock('/api/v4/projects/101', API_FIXTURES.projects[0]);
+            mock.mock('/api/v4/projects/102', API_FIXTURES.error_notFound, { error: true, status: 404 });
+            mock.mock('/api/v4/projects/103', API_FIXTURES.projects[2]);
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+                const projects = await client.fetchProjects();
+
+                // Should get 2 projects (101 and 103 succeeded, 102 failed)
+                runner.assertEqual(projects.length, 2, 'Should fetch 2 projects (1 failed)');
+                runner.assertEqual(projects[0].id, 101, 'Should include project 101');
+                runner.assertEqual(projects[1].id, 103, 'Should include project 103');
+
+            } finally {
+                mock.restore();
+            }
+        });
+
+        // Test 5: Empty pipeline result (project with 0 pipelines)
+        runner.test('Empty result: project with 0 pipelines returns empty array without error', async () => {
+            const mock = new MockFetch();
+
+            mock.mock('/api/v4/projects/103', API_FIXTURES.projects[2]);
+            mock.mock('/api/v4/projects/103/pipelines', []);
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+                window.CONFIG.projectIds = [103];
+
+                const projects = await client.fetchProjects();
+                runner.assertEqual(projects.length, 1, 'Should fetch 1 project');
+
+                const pipelines = await client.fetchPipelines(projects);
+                runner.assertEqual(pipelines.length, 0, 'Should return empty pipeline array');
+
+            } finally {
+                mock.restore();
+                window.CONFIG.projectIds = [101, 102, 103];
+            }
+        });
+
+        // Test 6: Large dataset performance
+        runner.test('Performance: 50 projects, 500 pipelines complete in <10 seconds', async () => {
+            const mock = new MockFetch();
+            mock.delay = 5; // Simulate 5ms network delay per request
+
+            // Mock 50 projects
+            API_FIXTURES.largeDataset_projects.forEach(project => {
+                mock.mock(`/api/v4/projects/${project.id}`, project);
+                mock.mock(`/api/v4/projects/${project.id}/pipelines`, API_FIXTURES.largeDataset_pipelines(project.id));
+            });
+
+            // Mock jobs for each pipeline (500 pipelines * 3 jobs each)
+            for (let projectId = 200; projectId < 250; projectId++) {
+                const pipelines = API_FIXTURES.largeDataset_pipelines(projectId);
+                pipelines.forEach(pipeline => {
+                    mock.mock(`/api/v4/projects/${projectId}/pipelines/${pipeline.id}/jobs`,
+                             API_FIXTURES.generateJobs(pipeline.id, 3));
+                });
+            }
+
+            mock.install();
+
+            try {
+                const client = new GitLabAPIClient();
+                window.CONFIG.projectIds = API_FIXTURES.largeDataset_projects.map(p => p.id);
+
+                const startTime = performance.now();
+
+                const projects = await client.fetchProjects();
+                const pipelines = await client.fetchPipelines(projects);
+                const jobs = await client.fetchJobs(pipelines);
+                const result = DataTransformer.transform(pipelines, jobs);
+
+                const duration = performance.now() - startTime;
+
+                runner.assertEqual(projects.length, 50, 'Should fetch 50 projects');
+                runner.assertEqual(pipelines.length, 500, 'Should fetch 500 pipelines');
+                runner.assertEqual(jobs.length, 1500, 'Should fetch 1500 jobs (3 per pipeline)');
+                runner.assertLessThan(duration, 10000, `Should complete in <10s (took ${duration.toFixed(0)}ms)`);
+
+            } finally {
+                mock.restore();
+                window.CONFIG.projectIds = [101, 102, 103];
+            }
+        });
+
+        // Test 7: Test isolation - verify no shared state
+        runner.test('Test isolation: multiple test runs produce consistent results', async () => {
+            const mock = new MockFetch();
+
+            mock.mock('/api/v4/projects/101', API_FIXTURES.projects[0]);
+            mock.mock('/api/v4/projects/101/pipelines', [API_FIXTURES.pipelines_page1[0]]);
+            mock.mock('/api/v4/projects/101/pipelines/1000/jobs', API_FIXTURES.jobs_pipeline_1000);
+
+            mock.install();
+
+            try {
+                const client1 = new GitLabAPIClient();
+                window.CONFIG.projectIds = [101];
+
+                const projects1 = await client1.fetchProjects();
+                const pipelines1 = await client1.fetchPipelines(projects1);
+                const jobs1 = await client1.fetchJobs(pipelines1);
+
+                // Second run - should produce identical results
+                const client2 = new GitLabAPIClient();
+                const projects2 = await client2.fetchProjects();
+                const pipelines2 = await client2.fetchPipelines(projects2);
+                const jobs2 = await client2.fetchJobs(pipelines2);
+
+                runner.assertEqual(projects1.length, projects2.length, 'Projects count should match');
+                runner.assertEqual(pipelines1.length, pipelines2.length, 'Pipelines count should match');
+                runner.assertEqual(jobs1.length, jobs2.length, 'Jobs count should match');
+
+                runner.assertEqual(projects1[0].id, projects2[0].id, 'Project IDs should match');
+                runner.assertEqual(pipelines1[0].id, pipelines2[0].id, 'Pipeline IDs should match');
+                runner.assertEqual(jobs1[0].id, jobs2[0].id, 'Job IDs should match');
+
+            } finally {
+                mock.restore();
+                window.CONFIG.projectIds = [101, 102, 103];
+            }
+        });
+
+        // Test 8: Verify all fixtures are valid
+        runner.test('Fixtures validation: all fixtures have correct structure', async () => {
+            // Verify projects
+            runner.assert(Array.isArray(API_FIXTURES.projects), 'Projects should be array');
+            runner.assertEqual(API_FIXTURES.projects.length, 3, 'Should have 3 projects');
+            API_FIXTURES.projects.forEach(p => {
+                runner.assert(p.id, 'Project should have id');
+                runner.assert(p.name, 'Project should have name');
+                runner.assert(p.web_url, 'Project should have web_url');
+            });
+
+            // Verify pipelines
+            runner.assertEqual(API_FIXTURES.pipelines_page1.length, 30, 'Page 1 should have 30 pipelines');
+            runner.assertEqual(API_FIXTURES.pipelines_page2.length, 30, 'Page 2 should have 30 pipelines');
+            runner.assertEqual(API_FIXTURES.pipelines_page3.length, 10, 'Page 3 should have 10 pipelines');
+
+            API_FIXTURES.pipelines_page1.forEach(p => {
+                runner.assert(p.id, 'Pipeline should have id');
+                runner.assert(p.status, 'Pipeline should have status');
+                runner.assert(p.created_at, 'Pipeline should have created_at');
+                runner.assert(p.user, 'Pipeline should have user');
+            });
+
+            // Verify jobs
+            runner.assertEqual(API_FIXTURES.jobs_pipeline_1000.length, 3, 'Should have 3 jobs for pipeline 1000');
+            API_FIXTURES.jobs_pipeline_1000.forEach(j => {
+                runner.assert(j.id, 'Job should have id');
+                runner.assert(j.name, 'Job should have name');
+                runner.assert(j.status, 'Job should have status');
+                runner.assert(j.created_at, 'Job should have created_at');
+            });
+        });
+
+        // Run all tests
+        runner.run();
+    </script>
+</body>
+</html>
