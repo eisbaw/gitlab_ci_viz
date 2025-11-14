@@ -685,20 +685,12 @@
             // Combine with contention backgrounds
             const allItems = [...enrichedItems, ...contentionBackgrounds];
 
-            // Save current window state
-            const savedWindow = timeline ? timeline.getWindow() : null;
-
-            // Update timeline
+            // Update timeline (auto-fits to new data)
+            // Note: Window state is NOT preserved across filter operations. This is intentional -
+            // preserving viewport state across filtered data creates misalignment and hidden state.
+            // Timeline auto-fits to show all current data.
             timeline.setGroups(transformed.groups);
             timeline.setItems(allItems);
-
-            // Restore window if valid
-            if (savedWindow) {
-                const validationResult = validateWindowState(savedWindow, allItems);
-                if (validationResult.valid) {
-                    timeline.setWindow(validationResult.window.start, validationResult.window.end);
-                }
-            }
 
             console.log('Filters applied successfully');
         }
@@ -967,114 +959,6 @@
         }
 
         /**
-         * Validate if saved window state is compatible with new data range
-         *
-         * Ensures UI doesn't show a time window that doesn't intersect with actual data.
-         * Returns structured result with validation status and reason.
-         *
-         * @param {Object} savedWindow - Window state from timeline.getWindow()
-         * @param {Array} items - Timeline items with start/end times
-         * @returns {Object} - { valid: boolean, window: Object|null, reason: string }
-         */
-        function validateWindowState(savedWindow, items) {
-            // Validate savedWindow structure
-            if (!savedWindow || !savedWindow.start || !savedWindow.end) {
-                if (savedWindow) {
-                    console.warn('validateWindowState: Invalid savedWindow structure (missing start/end)');
-                }
-                return { valid: false, window: null, reason: 'no_saved_state' };
-            }
-
-            if (items.length === 0) {
-                console.warn('validateWindowState: No items to validate against');
-                return { valid: false, window: null, reason: 'empty_items' };
-            }
-
-            // Calculate actual data range from items with error handling
-            // Items can have 'start' and optionally 'end' properties
-            let minTime = Infinity;
-            let maxTime = -Infinity;
-            let validItemCount = 0;
-
-            items.forEach((item, index) => {
-                try {
-                    if (item.start) {
-                        const startTime = new Date(item.start).getTime();
-                        // Validate date parsing succeeded
-                        if (!isNaN(startTime)) {
-                            minTime = Math.min(minTime, startTime);
-                            maxTime = Math.max(maxTime, startTime);
-                            validItemCount++;
-                        }
-                    }
-                    if (item.end) {
-                        const endTime = new Date(item.end).getTime();
-                        if (!isNaN(endTime)) {
-                            maxTime = Math.max(maxTime, endTime);
-                        }
-                    }
-                } catch (error) {
-                    console.warn(`validateWindowState: Skipping item ${index} due to invalid date: ${error.message}`);
-                }
-            });
-
-            // If no valid times found, warn and return null
-            if (minTime === Infinity || maxTime === -Infinity) {
-                console.warn(
-                    `validateWindowState: No valid time data found in ${items.length} items. ` +
-                    `Items may lack start/end properties or have malformed dates.`
-                );
-                return { valid: false, window: null, reason: 'no_valid_times' };
-            }
-
-            // Validate savedWindow timestamps
-            const windowStart = savedWindow.start.getTime();
-            const windowEnd = savedWindow.end.getTime();
-
-            if (isNaN(windowStart) || isNaN(windowEnd)) {
-                console.warn('validateWindowState: Saved window has invalid timestamps');
-                return { valid: false, window: null, reason: 'invalid_window_times' };
-            }
-
-            // Check if saved window intersects with data range
-            const hasOverlap = windowStart <= maxTime && windowEnd >= minTime;
-
-            if (!hasOverlap) {
-                console.warn(
-                    'validateWindowState: Saved window does not intersect with new data range. ' +
-                    `Saved: [${savedWindow.start.toISOString()} - ${savedWindow.end.toISOString()}], ` +
-                    `Data: [${new Date(minTime).toISOString()} - ${new Date(maxTime).toISOString()}]. ` +
-                    'Falling back to default view.'
-                );
-                return { valid: false, window: null, reason: 'no_overlap' };
-            }
-
-            // Check for meaningful intersection (at least 10% overlap with data range)
-            const dataRange = maxTime - minTime;
-            const overlapStart = Math.max(windowStart, minTime);
-            const overlapEnd = Math.min(windowEnd, maxTime);
-            const overlapDuration = overlapEnd - overlapStart;
-            const minOverlapDuration = dataRange * 0.1;
-
-            if (overlapDuration < minOverlapDuration) {
-                console.warn(
-                    'validateWindowState: Saved window has insufficient overlap with data. ' +
-                    `Overlap: ${Math.round(overlapDuration / 1000)}s, ` +
-                    `Minimum required: ${Math.round(minOverlapDuration / 1000)}s (10% of data range). ` +
-                    'Falling back to default view.'
-                );
-                return { valid: false, window: null, reason: 'insufficient_overlap' };
-            }
-
-            console.log(
-                `validateWindowState: Window valid. ` +
-                `Processed ${validItemCount} items with valid timestamps.`
-            );
-            return { valid: true, window: savedWindow, reason: 'valid' };
-        }
-
-
-        /**
          * Fetch GitLab data and render on timeline
          *
          * Orchestrates the complete data flow:
@@ -1084,19 +968,13 @@
          * 4. Transform to vis.js format
          * 5. Update timeline with transformed data
          *
-         * @param {boolean} isRefresh - If true, preserve timeline zoom/pan state
+         * @param {boolean} isRefresh - If true, indicates this is a refresh operation
          */
         async function fetchAndRender(isRefresh = false) {
             try {
                 // Indicate refresh is in progress
                 if (isRefresh) {
                     updateLastUpdateTimestamp(true);
-                }
-
-                // Save current timeline window if refreshing
-                let savedWindow = null;
-                if (isRefresh && timeline) {
-                    savedWindow = timeline.getWindow();
                 }
 
                 // Step 1: Fetch projects
@@ -1163,20 +1041,13 @@
                 // Step 6: Combine enriched items with contention backgrounds
                 const allItems = [...enrichedItems, ...contentionBackgrounds];
 
-                // Step 7: Update timeline
+                // Step 7: Update timeline (auto-fits to new data)
+                // Note: Window state is NOT preserved across refreshes. This is intentional -
+                // preserving viewport state across refreshed data creates misalignment and hidden state.
+                // Timeline auto-fits to show all current data.
                 showLoading('Rendering timeline...');
                 timeline.setGroups(transformed.groups);
                 timeline.setItems(allItems);
-
-                // Restore window if refreshing and valid
-                if (savedWindow) {
-                    const validationResult = validateWindowState(savedWindow, allItems);
-                    if (validationResult.valid) {
-                        timeline.setWindow(validationResult.window.start, validationResult.window.end);
-                    } else {
-                        console.log(`Timeline falling back to default view: ${validationResult.reason}`);
-                    }
-                }
 
                 // Update last update timestamp
                 updateLastUpdateTimestamp(false);
