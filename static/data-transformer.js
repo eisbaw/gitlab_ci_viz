@@ -534,6 +534,18 @@ class DataTransformer {
     }
 
     /**
+     * Escape HTML special characters to prevent XSS
+     * @param {string} str - String to escape
+     * @returns {string} HTML-escaped string
+     */
+    static escapeHtml(str) {
+        if (!str) return str;
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    /**
      * Transform domain model to vis.js Timeline format
      *
      * @param {User[]} users - Array of User domain objects
@@ -548,7 +560,7 @@ class DataTransformer {
             const userGroupId = `user-${user.id}`;
             const userGroup = {
                 id: userGroupId,
-                content: user.getDisplayName(),
+                content: this.escapeHtml(user.getDisplayName()),
                 nestedGroups: [],
                 showNested: false  // Enable collapse/expand functionality
             };
@@ -588,7 +600,7 @@ class DataTransformer {
 
                     const jobGroup = {
                         id: jobGroupId,
-                        content: `${job.stage}: ${job.name}`
+                        content: `${this.escapeHtml(job.stage)}: ${this.escapeHtml(job.name)}`
                     };
                     groups.push(jobGroup);
 
@@ -596,7 +608,7 @@ class DataTransformer {
                     const jobItem = {
                         id: `job-item-${job.id}`,
                         group: jobGroupId,
-                        content: job.name,
+                        content: this.escapeHtml(job.name),
                         start: job.getStartTime(),
                         end: job.getEndTime(),
                         type: 'range',

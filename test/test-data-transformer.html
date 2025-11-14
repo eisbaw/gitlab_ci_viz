@@ -141,6 +141,20 @@
                 }
             }
 
+            /**
+             * Escape HTML special characters to prevent XSS
+             * @param {string} str - String to escape
+             * @returns {string} Escaped string safe for HTML
+             */
+            escapeHtml(str) {
+                if (typeof str !== 'string') {
+                    str = String(str);
+                }
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
             render() {
                 const resultsDiv = document.getElementById('results');
                 let html = '';
@@ -157,7 +171,7 @@
                 // Test suites
                 for (const suite of this.tests) {
                     html += `<div class="test-suite">`;
-                    html += `<h2>${suite.name}</h2>`;
+                    html += `<h2>${this.escapeHtml(suite.name)}</h2>`;
 
                     for (const test of suite.tests) {
                         const statusClass = test.passed ? 'pass' : 'fail';
@@ -165,10 +179,10 @@
 
                         html += `<div class="test-case">`;
                         html += `<span class="${statusClass}">${statusIcon}</span> `;
-                        html += `<span class="test-title">${test.name}</span>`;
+                        html += `<span class="test-title">${this.escapeHtml(test.name)}</span>`;
 
                         if (!test.passed && test.error) {
-                            html += `<div class="error">${test.error}</div>`;
+                            html += `<div class="error">${this.escapeHtml(test.error)}</div>`;
                         }
 
                         html += `</div>`;
@@ -945,14 +959,14 @@
                         created_at: '2025-01-13T10:00:00Z',
                         started_at: '2025-01-13T10:01:00Z',
                         finished_at: '2025-01-13T10:15:00Z',
-                        user: { id: 1, username: 'alice', name: 'Alice <script>alert("xss")</script>' }
+                        user: { id: 1, username: 'alice', name: 'Alice <script>alert("xss")<\/script>' }
                     }
                 ];
 
                 const jobs = [
                     {
                         id: 101,
-                        name: 'build-<script>alert("xss")</script>',
+                        name: 'build-<script>alert("xss")<\/script>',
                         stage: 'test & deploy',
                         status: 'success',
                         created_at: '2025-01-13T10:01:00Z',
@@ -966,17 +980,29 @@
                 const users = DataTransformer.transformToDomainModel(pipelines, jobs);
                 const visData = DataTransformer.transformToVisFormat(users);
 
-                // Data should be stored as-is (escaping is UI responsibility)
+                // Data should be stored as-is in domain model
                 const user = users[0];
-                runner.assertEqual(user.name, 'Alice <script>alert("xss")</script>');
+                runner.assertEqual(user.name, 'Alice <script>alert("xss")<\/script>');
 
                 const job = users[0].pipelines[0].jobs[0];
-                runner.assertEqual(job.name, 'build-<script>alert("xss")</script>');
+                runner.assertEqual(job.name, 'build-<script>alert("xss")<\/script>');
                 runner.assertEqual(job.stage, 'test & deploy');
 
-                // vis.js content should contain the raw data
+                // vis.js content MUST be HTML-escaped for XSS protection
+                const userGroup = visData.groups.find(g => g.id === 'user-1');
+                runner.assert(
+                    userGroup.content.includes('&lt;script&gt;') &&
+                    userGroup.content.includes('&lt;/script&gt;'),
+                    'User group content should be HTML-escaped'
+                );
+
                 const jobGroup = visData.groups.find(g => g.id === 'job-101');
-                runner.assert(jobGroup.content.includes('test & deploy'), 'Job group should preserve stage name');
+                runner.assert(
+                    jobGroup.content.includes('&lt;script&gt;') &&
+                    jobGroup.content.includes('&lt;/script&gt;'),
+                    'Job group content should be HTML-escaped'
+                );
+                runner.assert(jobGroup.content.includes('test &amp; deploy'), 'Job group should HTML-escape stage name');
             });
         });
 
