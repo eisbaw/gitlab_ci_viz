@@ -15,7 +15,6 @@ import argparse
 import json
 import logging
 import re
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -54,29 +53,262 @@ def redact_token(text, token):
     return text.replace(token, "[REDACTED]")
 
 
-def get_gitlab_token():
-    """Execute 'glab auth token' and return the token."""
-    logging.debug("Executing 'glab auth token' command")
+def _read_gitlab_ssh_config(gitlab_url):
+    """Read GitLab SSH connection configuration from gitlab.yml.
+
+    Args:
+        gitlab_url: GitLab instance URL to extract hostname
+
+    Returns:
+        dict with 'hostname', 'ssh_port', 'ssh_user' if found, None otherwise
+
+    Config file location: ~/.config/gitlab_ci_viz/gitlab.yml
+    Format:
+        hostname: gitlab.example.com
+        ssh_port: 12051
+        ssh_user: git
+    """
+    import os
+
+    config_path = os.path.expanduser("~/.config/gitlab_ci_viz/gitlab.yml")
+    if not os.path.exists(config_path):
+        logging.debug(
+            "GitLab SSH config not found at ~/.config/gitlab_ci_viz/gitlab.yml"
+        )
+        return None
+
+    logging.debug(f"Reading GitLab SSH config from {config_path}")
+
+    try:
+        config = {}
+        with open(config_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key == "hostname":
+                        config["hostname"] = value
+                    elif key == "ssh_port":
+                        try:
+                            config["ssh_port"] = int(value)
+                        except ValueError:
+                            logging.warning(f"Invalid ssh_port value: {value}")
+                            return None
+                    elif key == "ssh_user":
+                        config["ssh_user"] = value
+
+        # Validate all required fields are present
+        required = ["hostname", "ssh_port", "ssh_user"]
+        if not all(k in config for k in required):
+            missing = [k for k in required if k not in config]
+            logging.warning(
+                f"GitLab SSH config missing required fields: {', '.join(missing)}"
+            )
+            return None
+
+        return config
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        logging.warning(f"Failed to read GitLab SSH config: {e}")
+        return None
+
+
+def _read_token_from_glab_config(hostname):
+    """Read GitLab token from glab CLI config file.
+
+    Args:
+        hostname: GitLab hostname (e.g., 'gitlab.com')
+
+    Returns:
+        Token string if found and valid, None otherwise
+
+    Note: glab CLI stores config at ~/.config/glab-cli/config.yml
+    This path is glab's default as of v1.x. If glab changes this,
+    we'll need to update this path.
+
+    Limitations:
+    - Uses line-by-line matching, not proper YAML parser (constrained
+      to Python stdlib to avoid external dependencies).
+    - May break if glab changes config format.
+    """
+    import os
+
+    config_path = os.path.expanduser("~/.config/glab-cli/config.yml")
+    if not os.path.exists(config_path):
+        logging.debug("Config file not found at ~/.config/glab-cli/config.yml")
+        return None
+
+    logging.debug(f"Looking for token in config file for host: {hostname}")
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            in_hosts = False
+            in_target_host = False
+            for line in f:
+                line = line.rstrip()
+                if line.startswith("hosts:"):
+                    in_hosts = True
+                    continue
+                if in_hosts:
+                    # Check if this is our target host
+                    if line.strip().startswith(f"{hostname}:"):
+                        in_target_host = True
+                        continue
+                    # Check if we hit another host (means we left our target)
+                    if in_target_host and line and not line.startswith("  "):
+                        break
+                    # Look for token in our target host
+                    if in_target_host and "token:" in line:
+                        token = line.split("token:", 1)[1].strip()
+                        # Validate token format (GitLab tokens are typically 20-200 chars)
+                        if not token:
+                            logging.warning(
+                                f"Config file has empty token for {hostname}"
+                            )
+                            return None
+                        if len(token) < 10 or len(token) > 200:
+                            logging.warning(
+                                f"Config file token for {hostname} has suspicious length: {len(token)}"
+                            )
+                            return None
+                        return token
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        logging.warning(f"Failed to read token from config file: {e}")
+        return None
+
+    return None
+
+
+def _create_token_via_ssh(ssh_config):
+    """Create a GitLab personal access token via SSH.
+
+    Args:
+        ssh_config: dict with 'hostname', 'ssh_port', 'ssh_user'
+
+    Returns:
+        Token string if successful, None otherwise
+
+    Creates a token named 'gitlab_ci_viz' with scopes 'read_repository,read_api'
+    that expires in 1 day.
+    """
+    import subprocess
+
+    hostname = ssh_config["hostname"]
+    port = ssh_config["ssh_port"]
+    user = ssh_config["ssh_user"]
+
+    logging.debug(f"Creating GitLab token via SSH to {user}@{hostname}:{port}")
+
     try:
         result = subprocess.run(
-            ["glab", "auth", "token"], capture_output=True, text=True, check=True
+            [
+                "ssh",
+                "-p",
+                str(port),
+                f"{user}@{hostname}",
+                "personal_access_token",
+                "gitlab_ci_viz",
+                "read_repository,read_api",
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
         )
-        logging.debug("glab auth token command completed with exit code 0")
-        token = result.stdout.strip()
-        if not token:
-            logging.error("glab auth token returned empty output")
-            sys.exit(1)
-        logging.info("GitLab token obtained successfully")
-        return token
+
+        # Parse output: "Token:   glpat-xxx"
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("Token:"):
+                token = line.split(":", 1)[1].strip()
+                if token and len(token) >= 10:
+                    logging.info(
+                        f"GitLab token created via SSH to {user}@{hostname}:{port}"
+                    )
+                    return token
+                else:
+                    logging.warning("SSH returned empty or invalid token")
+                    return None
+
+        logging.warning("Could not parse token from SSH output")
+        return None
+
+    except subprocess.TimeoutExpired:
+        logging.warning("SSH token creation timed out after 10 seconds")
+        return None
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr or e.stdout or "Unknown error"
-        # Note: Cannot redact token here as it doesn't exist yet (we're trying to obtain it)
-        # Token should not appear in glab error output
-        logging.error(f"Failed to get GitLab token (exit {e.returncode}): {error_msg}")
-        sys.exit(1)
+        error_msg = e.stderr or e.stdout or ""
+        logging.warning(f"SSH token creation failed: {error_msg}")
+        return None
     except FileNotFoundError:
-        logging.error("'glab' command not found in PATH. Please install GitLab CLI.")
-        sys.exit(1)
+        logging.warning("'ssh' command not found")
+        return None
+
+
+def get_gitlab_token(gitlab_url="https://gitlab.com"):
+    """Obtain GitLab authentication token via fallback chain.
+
+    Tries the following methods in order:
+    1. Environment variables: GITLAB_TOKEN or GITLAB_AUTH_TOKEN
+    2. SSH token creation using ~/.config/gitlab_ci_viz/gitlab.yml
+    3. glab CLI config file: ~/.config/glab-cli/config.yml
+
+    Args:
+        gitlab_url: GitLab instance URL (default: https://gitlab.com)
+                   Used for SSH config hostname matching and config file lookup
+
+    Returns:
+        GitLab personal access token string
+
+    Raises:
+        SystemExit: If all methods fail (exits with code 1)
+
+    Note: Environment variables are preferred for reproducibility in
+    Docker/CI environments. SSH token creation is second choice (creates
+    new short-lived tokens). Config file is last resort (persisted token).
+    """
+    import os
+
+    logging.debug("Obtaining GitLab token")
+
+    # Extract hostname from gitlab URL for config file lookup
+    hostname = urlparse(gitlab_url).netloc
+
+    # 1. Try environment variable first (most reproducible)
+    token = os.environ.get("GITLAB_TOKEN") or os.environ.get("GITLAB_AUTH_TOKEN")
+    if token:
+        logging.info("GitLab token obtained from environment variable")
+        return token
+
+    # 2. Try creating token via SSH (second choice - creates fresh token)
+    ssh_config = _read_gitlab_ssh_config(gitlab_url)
+    if ssh_config:
+        token = _create_token_via_ssh(ssh_config)
+        if token:
+            return token
+
+    # 3. Try reading from glab config file (last resort - persisted token)
+    token = _read_token_from_glab_config(hostname)
+    if token:
+        logging.info(f"GitLab token obtained from config file for {hostname}")
+        return token
+
+    # All methods failed
+    logging.error("Failed to obtain GitLab token")
+    logging.error("Please try one of the following:")
+    logging.error("  1. Set GITLAB_TOKEN or GITLAB_AUTH_TOKEN environment variable")
+    logging.error(
+        "  2. Create ~/.config/gitlab_ci_viz/gitlab.yml with SSH connection details:"
+    )
+    logging.error("     hostname: your-gitlab-host.com")
+    logging.error("     ssh_port: 22")
+    logging.error("     ssh_user: git")
+    logging.error("  3. Authenticate with: glab auth login")
+    sys.exit(1)
 
 
 def parse_time_spec(time_spec):
@@ -383,7 +615,7 @@ def main():
 
     # Get GitLab token
     print("Obtaining GitLab authentication token...")
-    token = get_gitlab_token()
+    token = get_gitlab_token(args.gitlab_url)
     print("Token obtained successfully.")
 
     # Generate config JavaScript

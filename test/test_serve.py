@@ -8,7 +8,7 @@ Tests the backend server functionality without actually starting the HTTP server
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, mock_open
 
 # Add parent directory to path to import serve
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -155,45 +155,393 @@ class TestTimeSpecParsing(unittest.TestCase):
         self.assertIn("Time format not supported", str(ctx.exception))
 
 
-class TestGitLabToken(unittest.TestCase):
-    """Test GitLab token acquisition."""
+class TestReadGitLabSSHConfig(unittest.TestCase):
+    """Test reading GitLab SSH configuration."""
+
+    @patch("os.path.exists")
+    def test_config_not_found(self, mock_exists):
+        """Test when config file doesn't exist."""
+        mock_exists.return_value = False
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertIsNone(config)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hostname: gitlab.com\nssh_port: 22\nssh_user: git\n"
+        ),
+    )
+    def test_config_success(self, mock_file, mock_exists):
+        """Test successful config reading."""
+        mock_exists.return_value = True
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertEqual(
+            config, {"hostname": "gitlab.com", "ssh_port": 22, "ssh_user": "git"}
+        )
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hostname: gitlab.com\nssh_port: 12051\n"
+        ),
+    )
+    def test_config_missing_field(self, mock_file, mock_exists):
+        """Test when config is missing required field."""
+        mock_exists.return_value = True
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertIsNone(config)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hostname: gitlab.com\nssh_port: invalid\nssh_user: git\n"
+        ),
+    )
+    def test_config_invalid_port(self, mock_file, mock_exists):
+        """Test when ssh_port is not a valid integer."""
+        mock_exists.return_value = True
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertIsNone(config)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="# Comment\nhostname: gitlab.com\nssh_port: 22\nssh_user: git\n"
+        ),
+    )
+    def test_config_with_comments(self, mock_file, mock_exists):
+        """Test config parsing with comments."""
+        mock_exists.return_value = True
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertEqual(
+            config, {"hostname": "gitlab.com", "ssh_port": 22, "ssh_user": "git"}
+        )
+
+    @patch("os.path.exists")
+    @patch("builtins.open")
+    def test_config_io_error(self, mock_file, mock_exists):
+        """Test handling of IO errors."""
+        mock_exists.return_value = True
+        mock_file.side_effect = IOError("Permission denied")
+        config = serve._read_gitlab_ssh_config("https://gitlab.com")
+        self.assertIsNone(config)
+
+
+class TestReadTokenFromGlabConfig(unittest.TestCase):
+    """Test reading token from glab config file."""
+
+    @patch("os.path.exists")
+    def test_read_token_config_not_found(self, mock_exists):
+        """Test when config file doesn't exist."""
+        mock_exists.return_value = False
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hosts:\n  gitlab.com:\n    token: glpat-test123\n"
+        ),
+    )
+    def test_read_token_success(self, mock_file, mock_exists):
+        """Test successful token reading from config."""
+        mock_exists.return_value = True
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertEqual(token, "glpat-test123")
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hosts:\n  gitlab.com:\n    token: \n"
+        ),
+    )
+    def test_read_token_empty_value(self, mock_file, mock_exists):
+        """Test when token value is empty in config."""
+        mock_exists.return_value = True
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hosts:\n  gitlab.com:\n    token: x\n"
+        ),
+    )
+    def test_read_token_too_short(self, mock_file, mock_exists):
+        """Test when token is too short (< 10 chars)."""
+        mock_exists.return_value = True
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hosts:\n  gitlab.com:\n    token: " + "x" * 250 + "\n"
+        ),
+    )
+    def test_read_token_too_long(self, mock_file, mock_exists):
+        """Test when token is too long (> 200 chars)."""
+        mock_exists.return_value = True
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+    @patch("os.path.exists")
+    @patch(
+        "builtins.open",
+        new_callable=lambda: mock_open(
+            read_data="hosts:\n  other.gitlab.com:\n    token: glpat-other\n"
+        ),
+    )
+    def test_read_token_wrong_host(self, mock_file, mock_exists):
+        """Test when config has different host."""
+        mock_exists.return_value = True
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+    @patch("os.path.exists")
+    @patch("builtins.open")
+    def test_read_token_io_error(self, mock_file, mock_exists):
+        """Test handling of IO errors."""
+        mock_exists.return_value = True
+        mock_file.side_effect = IOError("Permission denied")
+        token = serve._read_token_from_glab_config("gitlab.com")
+        self.assertIsNone(token)
+
+
+class TestCreateTokenViaSSH(unittest.TestCase):
+    """Test SSH token creation."""
 
     @patch("subprocess.run")
-    def test_get_gitlab_token_success(self, mock_run):
-        """Test successful token retrieval."""
-        mock_run.return_value = MagicMock(stdout="glpat-abc123xyz789\n", returncode=0)
-        token = serve.get_gitlab_token()
-        self.assertEqual(token, "glpat-abc123xyz789")
+    def test_ssh_token_success(self, mock_run):
+        """Test successful token creation via SSH."""
+        mock_run.return_value = MagicMock(
+            stdout="Token:   glpat-test123\nScopes:  read_repository,read_api\nExpires: 2025-11-16\n",
+            returncode=0,
+        )
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertEqual(token, "glpat-test123")
         mock_run.assert_called_once_with(
-            ["glab", "auth", "token"], capture_output=True, text=True, check=True
+            [
+                "ssh",
+                "-p",
+                "22",
+                "git@gitlab.com",
+                "personal_access_token",
+                "gitlab_ci_viz",
+                "read_repository,read_api",
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
         )
 
     @patch("subprocess.run")
-    @patch("sys.exit")
-    def test_get_gitlab_token_empty(self, mock_exit, mock_run):
-        """Test handling of empty token output."""
-        mock_run.return_value = MagicMock(stdout="", returncode=0)
-        serve.get_gitlab_token()
-        mock_exit.assert_called_once_with(1)
+    def test_ssh_token_empty_output(self, mock_run):
+        """Test when SSH returns no token."""
+        mock_run.return_value = MagicMock(stdout="No token found\n", returncode=0)
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertIsNone(token)
 
     @patch("subprocess.run")
-    @patch("sys.exit")
-    def test_get_gitlab_token_command_fails(self, mock_exit, mock_run):
-        """Test handling of glab command failure (CalledProcessError)."""
+    def test_ssh_token_invalid_token(self, mock_run):
+        """Test when SSH returns invalid token."""
+        mock_run.return_value = MagicMock(stdout="Token:   x\n", returncode=0)
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertIsNone(token)
+
+    @patch("subprocess.run")
+    def test_ssh_timeout(self, mock_run):
+        """Test SSH timeout handling."""
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["ssh"], timeout=10)
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertIsNone(token)
+
+    @patch("subprocess.run")
+    def test_ssh_command_fails(self, mock_run):
+        """Test SSH command failure."""
         import subprocess
 
         mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1, cmd=["glab", "auth", "token"], stderr="authentication failed"
+            returncode=1, cmd=["ssh"], stderr="Connection refused"
         )
-        serve.get_gitlab_token()
-        mock_exit.assert_called_once_with(1)
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertIsNone(token)
 
     @patch("subprocess.run")
+    def test_ssh_command_not_found(self, mock_run):
+        """Test when ssh command is not available."""
+        mock_run.side_effect = FileNotFoundError("ssh not found")
+        ssh_config = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        token = serve._create_token_via_ssh(ssh_config)
+        self.assertIsNone(token)
+
+
+class TestGitLabToken(unittest.TestCase):
+    """Test GitLab token acquisition."""
+
+    @patch.dict("os.environ", {"GITLAB_TOKEN": "glpat-from-env"})
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
+    def test_get_gitlab_token_from_env_var(
+        self, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test token retrieval from GITLAB_TOKEN environment variable."""
+        token = serve.get_gitlab_token()
+        self.assertEqual(token, "glpat-from-env")
+        # Should not call any other methods when env var is set
+        mock_ssh_config.assert_not_called()
+        mock_create_token.assert_not_called()
+        mock_glab_config.assert_not_called()
+
+    @patch.dict("os.environ", {"GITLAB_AUTH_TOKEN": "glpat-from-auth-env"})
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
+    def test_get_gitlab_token_from_auth_env_var(
+        self, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test token retrieval from GITLAB_AUTH_TOKEN environment variable."""
+        token = serve.get_gitlab_token()
+        self.assertEqual(token, "glpat-from-auth-env")
+        # Should not call any other methods when env var is set
+        mock_ssh_config.assert_not_called()
+        mock_create_token.assert_not_called()
+        mock_glab_config.assert_not_called()
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
+    def test_get_gitlab_token_from_ssh(
+        self, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test token creation via SSH (2nd priority)."""
+        mock_ssh_config.return_value = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        mock_create_token.return_value = "glpat-from-ssh"
+        token = serve.get_gitlab_token()
+        self.assertEqual(token, "glpat-from-ssh")
+        mock_ssh_config.assert_called_once()
+        mock_create_token.assert_called_once()
+        # Should not call glab config when SSH succeeds
+        mock_glab_config.assert_not_called()
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
+    def test_get_gitlab_token_from_glab_config(
+        self, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test token from glab config file (3rd priority)."""
+        # SSH config not available
+        mock_ssh_config.return_value = None
+        # Glab config returns token
+        mock_glab_config.return_value = "glpat-from-glab-config"
+        token = serve.get_gitlab_token()
+        self.assertEqual(token, "glpat-from-glab-config")
+        mock_ssh_config.assert_called_once()
+        mock_glab_config.assert_called_once()
+        # Should not call SSH token creation when config is None
+        mock_create_token.assert_not_called()
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
+    def test_get_gitlab_token_ssh_fails_fallback_to_glab(
+        self, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test fallback to glab config when SSH fails."""
+        # SSH config available
+        mock_ssh_config.return_value = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        # But SSH token creation fails
+        mock_create_token.return_value = None
+        # Glab config has token
+        mock_glab_config.return_value = "glpat-from-glab-fallback"
+        token = serve.get_gitlab_token()
+        self.assertEqual(token, "glpat-from-glab-fallback")
+        # Verify all methods were tried in order
+        mock_ssh_config.assert_called_once()
+        mock_create_token.assert_called_once()
+        mock_glab_config.assert_called_once()
+
+    @patch.dict("os.environ", {}, clear=True)
+    @patch("serve._read_gitlab_ssh_config")
+    @patch("serve._create_token_via_ssh")
+    @patch("serve._read_token_from_glab_config")
     @patch("sys.exit")
-    def test_get_gitlab_token_command_not_found(self, mock_exit, mock_run):
-        """Test handling of missing glab command (FileNotFoundError)."""
-        mock_run.side_effect = FileNotFoundError("glab not found")
+    def test_get_gitlab_token_all_methods_fail(
+        self, mock_exit, mock_glab_config, mock_create_token, mock_ssh_config
+    ):
+        """Test that all three methods are tried before exiting."""
+        # No env var (cleared by decorator)
+        # SSH config available
+        mock_ssh_config.return_value = {
+            "hostname": "gitlab.com",
+            "ssh_port": 22,
+            "ssh_user": "git",
+        }
+        # But SSH token creation fails
+        mock_create_token.return_value = None
+        # Glab config also has no token
+        mock_glab_config.return_value = None
+
         serve.get_gitlab_token()
+
+        # Verify all methods were attempted
+        mock_ssh_config.assert_called_once()
+        mock_create_token.assert_called_once()
+        mock_glab_config.assert_called_once()
         mock_exit.assert_called_once_with(1)
 
 
