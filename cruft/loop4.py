@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Interactive TUI for continuous Claude Code sessions with human interjections.
+Continuous TUI for automated Claude Code sessions.
 
 Architecture:
     - MessageRenderer: Stateless rendering of Claude JSON messages to formatted text
-    - CursesUI: Terminal UI management and interaction loop
+    - CursesUI: Terminal UI management and display
     - Session management: Subprocess execution with rate limiting
 
-Displays Claude's streaming output in a human-friendly format (upper pane) and
-allows humans to provide input between sessions (lower pane).
+Displays Claude's streaming output in a human-friendly format.
 
 Configuration:
     CLAUDE_TUI_OUTPUT: Environment variable for output log path
@@ -18,6 +17,7 @@ Notes:
     - Logging goes to stderr to not interfere with curses
     - Rate limiting auto-enables --continue to preserve context
     - Terminal must be at least 40x10 for proper display
+    - Runs continuously without user input
 """
 
 import argparse
@@ -44,17 +44,14 @@ from typing import Optional
 # Output buffer configuration
 MAX_OUTPUT_LINES = 10000  # ~500KB at 50 chars/line; prevents memory growth
 MAX_JSON_BUFFER_LINES = 100  # Prevents unbounded accumulation of malformed JSON
-MAX_INPUT_CHARS = 10000  # Prevents memory exhaustion from stuck keys
 
 # UI rendering configuration
 PREVIEW_LINES = 5  # Lines shown in tool input/result previews
 PREVIEW_CHAR_WIDTH = 70  # Character width for preview truncation
-INPUT_DISPLAY_LINES = 2  # Lines visible in input window
 WRAP_WIDTH_OFFSET = 10  # Chars reserved for box borders in wrapping
 
 # Window layout configuration
 STATUS_HEIGHT = 1  # Height of status bar
-INPUT_HEIGHT = 4  # Height of input pane
 MIN_TERMINAL_HEIGHT = 10  # Minimum terminal height required
 MIN_TERMINAL_WIDTH = 40  # Minimum terminal width required
 
@@ -413,12 +410,11 @@ class MessageRenderer:
 
 class CursesUI:
     """
-    Terminal UI for interactive Claude Code sessions.
+    Terminal UI for continuous Claude Code sessions.
 
     Layout:
         - Output pane (scrollable): Claude's responses and tool output
         - Status line: Current operation status
-        - Input pane: User input between sessions
 
     Attributes:
         stdscr: Curses screen object
@@ -444,7 +440,6 @@ class CursesUI:
 
         # Output buffer (bounded deque prevents memory growth)
         self.output_lines = deque(maxlen=MAX_OUTPUT_LINES)
-        self.input_buffer = ""
 
         # Validate terminal dimensions
         self.height, self.width = stdscr.getmaxyx()
@@ -469,11 +464,9 @@ class CursesUI:
         curses.init_pair(5, curses.COLOR_CYAN, -1)    # Tools
 
         # Setup windows with validated dimensions
-        total_fixed_height = STATUS_HEIGHT + INPUT_HEIGHT
-        self.output_height = self.height - total_fixed_height
+        self.output_height = self.height - STATUS_HEIGHT
         self.output_win = curses.newwin(self.output_height, self.width, 0, 0)
         self.status_win = curses.newwin(STATUS_HEIGHT, self.width, self.output_height, 0)
-        self.input_win = curses.newwin(INPUT_HEIGHT, self.width, self.output_height + STATUS_HEIGHT, 0)
 
         self.output_win.scrollok(True)
         self.output_win.idlok(True)
@@ -551,94 +544,10 @@ class CursesUI:
         self.status_win.attroff(curses.color_pair(3))
         self.status_win.refresh()
 
-    def refresh_input(self):
-        """
-        Refresh the input window with current buffer.
 
-        Shows up to INPUT_DISPLAY_LINES of wrapped text.
-        """
-        self.input_win.clear()
-        self.input_win.border()
-
-        try:
-            self.input_win.addstr(0, 2, " Your Input (press Enter to submit, Ctrl+D to skip) ")
-        except curses.error:
-            pass  # Title line overflow is cosmetic
-
-        # Show input buffer with wrapping
-        if self.input_buffer:
-            lines = textwrap.wrap(self.input_buffer, width=self.width - 4)
-            for i, line in enumerate(lines[:INPUT_DISPLAY_LINES]):
-                try:
-                    self.input_win.addstr(i + 1, 2, line)
-                except curses.error:
-                    pass  # Overflow is cosmetic
-
-            # Show indicator if more lines exist
-            if len(lines) > INPUT_DISPLAY_LINES:
-                try:
-                    self.input_win.addstr(INPUT_DISPLAY_LINES, self.width - 6, "(more)")
-                except curses.error:
-                    pass
-
-        self.input_win.refresh()
-
-    def get_user_input(self) -> Optional[str]:
-        """
-        Get input from user (blocking).
-
-        Returns:
-            User input string, or None if skipped (Ctrl+D/ESC)
-
-        Note:
-            Input is limited to MAX_INPUT_CHARS to prevent memory exhaustion.
-        """
-        self.refresh_status("Waiting for your input... (Ctrl+D to continue without input)")
-        self.input_buffer = ""
-        self.refresh_input()
-
-        curses.curs_set(1)  # Show cursor
-
-        while True:
-            try:
-                ch = self.input_win.getch()
-
-                if ch == 4:  # Ctrl+D
-                    curses.curs_set(0)
-                    logger.info("User skipped input (Ctrl+D)")
-                    return None
-                elif ch == ord('\n'):  # Enter
-                    curses.curs_set(0)
-                    result = self.input_buffer.strip()
-                    logger.info(f"User provided input ({len(result)} chars)")
-                    return result if result else None
-                elif ch == 127 or ch == curses.KEY_BACKSPACE:  # Backspace
-                    self.input_buffer = self.input_buffer[:-1]
-                elif ch == 27:  # ESC
-                    curses.curs_set(0)
-                    logger.info("User skipped input (ESC)")
-                    return None
-                elif 32 <= ch <= 126:  # Printable characters
-                    # Enforce input limit
-                    if len(self.input_buffer) < MAX_INPUT_CHARS:
-                        self.input_buffer += chr(ch)
-                    else:
-                        # Visual feedback: flash screen when limit reached
-                        curses.flash()
-
-                self.refresh_input()
-
-            except KeyboardInterrupt:
-                curses.curs_set(0)
-                logger.info("User interrupted input (Ctrl+C)")
-                return None
-
-    def run_claude_session(self, additional_prompt: Optional[str] = None):
+    def run_claude_session(self):
         """
         Run a Claude Code session and display output.
-
-        Args:
-            additional_prompt: Optional additional context from user input
 
         Note:
             Streams output to both UI and OUTPUT_PATH file.
@@ -654,16 +563,10 @@ class CursesUI:
             "--output-format",
             "stream-json",
             "-p",
+            self.prompt,
         ])
 
-        # Combine prompts if additional input provided
-        if additional_prompt:
-            full_prompt = f"{self.prompt}\n\nAdditional context from user:\n{additional_prompt}"
-            cmd.append(full_prompt)
-            logger.info(f"Running session with additional prompt ({len(additional_prompt)} chars)")
-        else:
-            cmd.append(self.prompt)
-            logger.info("Running session with initial prompt")
+        logger.info("Running session with prompt")
 
         self.refresh_status(f"Running: {' '.join(cmd[:3])} ...")
         self.add_output_line("")
@@ -772,13 +675,13 @@ class CursesUI:
 
     def run_loop(self):
         """
-        Main interaction loop.
+        Main continuous loop.
 
         Flow:
             1. Run Claude session
             2. Check for rate limiting
             3. If rate limited: sleep and continue
-            4. Otherwise: prompt for user input
+            4. Otherwise: pause and continue
             5. Repeat
 
         Note:
@@ -786,13 +689,10 @@ class CursesUI:
         """
         self.refresh_status("Starting...")
         self.refresh_output()
-        self.refresh_input()
-
-        additional_input = None
 
         while True:
             # Run Claude session
-            self.run_claude_session(additional_input)
+            self.run_claude_session()
 
             # Check for rate limiting
             last_line = last_json_line(OUTPUT_PATH)
@@ -816,9 +716,6 @@ class CursesUI:
             else:
                 # Not rate limited - reset continue flag
                 self.continue_flag = False
-
-            # Get user input for next iteration
-            additional_input = self.get_user_input()
 
             # Brief pause before next iteration
             time.sleep(SESSION_PAUSE_SECONDS)
@@ -952,7 +849,7 @@ def main():
     Validates environment, parses arguments, and launches curses UI.
     """
     parser = argparse.ArgumentParser(
-        description="Interactive TUI for continuous Claude Code sessions",
+        description="Continuous TUI for automated Claude Code sessions",
         epilog=f"Output is logged to: {OUTPUT_PATH} "
                f"(override with CLAUDE_TUI_OUTPUT env var)"
     )

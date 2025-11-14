@@ -1,0 +1,297 @@
+================================================================================
+MPED ARCHITECTURAL REVIEW: ERROR HANDLING & TEST QUALITY
+================================================================================
+
+REVIEW SCOPE:
+- /static/api-client.js (API error handling)
+- /index.html (Error formatting and display)
+- /test/test-error-message-ux.html (Test coverage)
+- /static/logger.js (Logging infrastructure)
+
+================================================================================
+OVERALL ASSESSMENT: STRONG ALIGNMENT WITH MPED PRINCIPLES
+================================================================================
+
+EXCELLENT (No changes needed):
+├─ Fail-Fast-Verbosely: Errors include What/Why/How guidance
+├─ Minimize State: No redundant error storage
+├─ Separate Concerns: User messages vs technical logging
+├─ Readable Code: Clear error messages in plain language
+├─ Single Error Factory: All errors created through _createError()
+├─ Structured Logging: Technical context in console, separate from UI
+└─ Test Coverage: Validates behavior not implementation
+
+GOOD (Minor improvements):
+├─ Error Categorization: 8 error types with good taxonomy
+├─ User Message Quality: Actionable steps for most errors
+├─ Test Organization: Well-structured with clear sections
+└─ XSS Safety: Proper HTML escaping of error messages
+
+NEEDS IMPROVEMENT (Should be addressed):
+├─ Test Duplication: formatError() copied in test file
+├─ Error Wrapping: Network error wrapping duplicated 3+ times
+├─ Partial Failures: Silent when some projects fail
+├─ Message Precision: NotFoundError shows API URLs
+└─ Manual Review ACs: Not automated in test suite
+
+================================================================================
+CRITICAL ISSUES
+================================================================================
+
+ISSUE #1: Duplicate formatError() in Tests
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Severity: HIGH (breaks single source of truth)
+Location: test/test-error-message-ux.html lines 114-155
+
+Problem:
+  Test file contains complete copy of formatError() from index.html
+  ├─ If index.html version changes, tests don't verify actual behavior
+  ├─ Maintenance burden: two places to update
+  └─ Tests become stale documentation
+
+Solution:
+  Extract formatError() to shared module: static/error-formatter.js
+  Then import in both index.html and tests
+  Impact: Low effort, high value (eliminates duplication)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ISSUE #2: Error Wrapping Duplicated in 3+ Places
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Severity: MEDIUM (maintenance burden)
+Location: api-client.js lines 114-121, 444-451, 286-293
+
+Problem:
+  Network error wrapping pattern repeated:
+  const contextError = this._createError('NetworkError', message);
+  contextError.url = url;
+  contextError.endpoint = endpoint;
+  contextError.originalError = error;
+
+Solution:
+  Create helper method _wrapNetworkError() and reuse
+  Impact: Low effort, reduces 10+ duplicate lines
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ISSUE #3: Partial Failures Silent to User
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Severity: MEDIUM (user confusion)
+Location: api-client.js lines 324-327, 536-538
+
+Problem:
+  When 3/5 projects fail to fetch:
+  ├─ User sees green "success" message
+  ├─ Partial data displayed without disclosure
+  ├─ Failed projects logged to console but not UI
+  └─ Hard to debug which projects are missing
+
+Solution:
+  Update fetchAndRender() to:
+  ├─ Show yellow warning if any failures
+  ├─ List failed project IDs
+  └─ Let user know data is incomplete
+
+Impact: Low effort, improves visibility
+
+================================================================================
+WHAT'S WORKING WELL
+================================================================================
+
+Error Type Classification:
+  InvalidTokenError      → "Run: glab auth login"
+  ExpiredTokenError      → "Run: glab auth login"
+  TimeoutError           → "Check if GitLab instance is accessible"
+  NetworkError           → "Verify network connectivity" + CORS docs
+  RateLimitError         → "Wait a few minutes before retrying"
+  ConfigurationError     → "Check command-line arguments"
+  InvalidTimeRangeError  → "Use format like '2 days ago'"
+  NotFoundError          → "Resource not found" (could improve)
+
+Logging Architecture:
+  Console (window.logger):
+  ├─ errorType, message, url, endpoint, timing
+  └─ Full technical context for debugging
+
+  UI (index.html):
+  ├─ Plain language message
+  ├─ Resolution steps tailored to error type
+  └─ No stack traces or technical details
+
+Test Coverage:
+  ✓ Error message catalog documented
+  ✓ What/Why/How structure verified
+  ✓ Stack traces never shown to users
+  ✓ Plain language validated (no 401, CORS jargon)
+  ✓ Token errors include fix command
+  ✓ CORS errors link to docs
+  ✓ Network errors suggest checks
+  ✓ Technical logging separated from UI
+  ✓ XSS safety verified
+
+================================================================================
+RECOMMENDATIONS (Priority Order)
+================================================================================
+
+PRIORITY 1: Extract formatError() to Module
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Action: Create static/error-formatter.js
+Why:    Eliminates test duplication, tests real implementation
+Effort: ~10 minutes
+Impact: HIGH - Fixes root cause of test reliability
+
+Pseudo-code:
+  // static/error-formatter.js
+  function escapeHTML(str) { ... }
+  function formatError(error) { ... }
+  window.formatError = formatError;
+
+  Then in index.html and test file:
+  <script src="/static/error-formatter.js"></script>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRIORITY 2: Create _wrapNetworkError() Helper
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Action: Add method to GitLabAPIClient class
+Why:    Removes duplication, single place to maintain
+Effort: ~5 minutes
+Impact: MEDIUM - Reduces maintenance burden
+
+Pseudo-code:
+  _wrapNetworkError(error, endpoint, url) {
+      const contextError = this._createError(
+          'NetworkError',
+          `Network error while connecting to GitLab: ${error.message}`
+      );
+      contextError.url = url;
+      contextError.endpoint = endpoint;
+      contextError.originalError = error;
+      return contextError;
+  }
+
+  Then replace all 3 instances with: throw this._wrapNetworkError(error, endpoint, url);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRIORITY 3: Surface Partial Failures in UI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Action: Check failed project/pipeline lists and show warning
+Why:    Users need to know data is incomplete
+Effort: ~10 minutes
+Impact: MEDIUM - Improves debugging and transparency
+
+Pseudo-code:
+  // In fetchAndRender()
+  if (failedProjects.length > 0) {
+      updateStatus(
+          `<strong>Partial Success:</strong> ${succeededProjects.length}/${projects.length} projects. ` +
+          `Failed: ${failedProjects.map(p => p.id).join(', ')}`,
+          'warning'
+      );
+  }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRIORITY 4: Improve Specific Error Messages
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Action: Update NotFoundError message
+Why:    Avoid showing API URLs to users
+Effort: ~2 minutes
+Impact: LOW - Improves message clarity
+
+Current: "Resource not found: https://gitlab.com/api/v4/projects/999"
+Better:  "Project not found. Verify the project ID is correct and you have access."
+
+PRIORITY 5: Automate Manual Review Checks
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Action: Move manual review to separate checklist or add automated behavioral tests
+Why:    Manual checks aren't enforced; easy to forget
+Effort: Medium
+Impact: MEDIUM - Ensures UX requirements don't regress
+
+Options:
+  1. Create docs/ERROR_MESSAGE_MANUAL_REVIEW.md with checklist
+  2. Add readability test (reject messages with jargon like "CORS", "401")
+  3. Add screenshot comparison tests for actual rendering
+
+================================================================================
+MPED PRINCIPLE ASSESSMENT
+================================================================================
+
+✓ FUNDAMENTALS FIRST
+  Error handling uses reproducible patterns
+  All errors created through single factory
+  Git repo tracks error catalog
+
+✓ BE COMPOSABLE
+  Error formatting separated from API client
+  Error display separated from data fetching
+  Each piece can be tested independently
+
+✓ DATA DESIGN BEFORE ALGORITHMS
+  Error object structure clear and consistent
+  Includes: name, errorType, message, url, endpoint, originalError
+  Technical context explicitly available for logging
+
+✓ FAIL FAST AND VERBOSELY
+  Immediate validation of CONFIG object
+  Clear error types (not generic "error")
+  Resolution steps for each error type
+  → Area for improvement: Silent partial failures
+
+✓ MINIMIZE STATE, NEVER DUPLICATE
+  Error objects created on-demand
+  Single error factory function
+  → Area for improvement: Duplicate error wrapping logic
+
+✓ OPTIMIZE FOR READABILITY FIRST
+  Plain language error messages
+  No technical jargon in user messages
+  Clear resolution steps
+  No stack traces to users
+
+✓ BOTTOM-UP DEVELOPMENT
+  Simple error handling without over-engineering
+  Test framework minimal and clear
+  Logging straightforward
+
+✓ GIT OVER DATABASES
+  Error types tracked in code
+  Error catalog documented in test
+  No database state needed
+
+✓ DOCUMENTATION LIVES NEAR CODE
+  Error messages documented in test file
+  Resolution steps in code comments
+  → Consider: Add error design docs to backlog/docs/
+
+✓ PROBLEM SOLVING WITH NOTES
+  Error catalog in test file serves as notes
+  Scenarios documented for each error type
+
+================================================================================
+CONCLUSION
+================================================================================
+
+The error handling implementation is SOLID and demonstrates good understanding
+of MPED principles. Main weaknesses are:
+
+1. Test-to-implementation duplication (moderate risk)
+2. Error wrapping code duplication (maintenance burden)
+3. Silent partial failures (transparency issue)
+
+All three are straightforward to fix and would significantly improve code
+quality. The foundation is strong; these are surface improvements.
+
+Recommended approach:
+1. Extract formatError() to module (Priority 1) - fixes test reliability
+2. Create _wrapNetworkError() helper (Priority 2) - reduces duplication
+3. Surface partial failures (Priority 3) - improves user transparency
+4. Document decisions in backlog/docs/ (Future) - capture design rationale
+
+Total effort to address all issues: ~30 minutes
+Value gained: Eliminates 30+ lines of duplication, improves test reliability,
+            better user feedback for edge cases
+
+================================================================================

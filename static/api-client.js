@@ -111,14 +111,7 @@ class GitLabAPIClient {
             }
 
             // Handle network errors with context
-            const contextError = this._createError(
-                'NetworkError',
-                `Network error while connecting to GitLab: ${error.message}`
-            );
-            contextError.url = url;
-            contextError.endpoint = normalizedEndpoint;
-            contextError.originalError = error;
-            throw contextError;
+            throw this._wrapNetworkError(error, url, normalizedEndpoint);
         }
     }
 
@@ -193,6 +186,25 @@ class GitLabAPIClient {
         error.name = 'GitLabAPIError';
         error.errorType = name;
         return error;
+    }
+
+    /**
+     * Wrap network error with context
+     *
+     * @param {Error} error - Original error
+     * @param {string} url - Request URL
+     * @param {string} endpoint - API endpoint
+     * @returns {Error} - Wrapped error with context
+     */
+    _wrapNetworkError(error, url, endpoint) {
+        const contextError = this._createError(
+            'NetworkError',
+            `Network error while connecting to GitLab: ${error.message}`
+        );
+        contextError.url = url;
+        contextError.endpoint = endpoint;
+        contextError.originalError = error;
+        return contextError;
     }
 
     /**
@@ -441,14 +453,7 @@ class GitLabAPIClient {
                 }
 
                 // Handle network errors with context
-                const contextError = this._createError(
-                    'NetworkError',
-                    `Network error while connecting to GitLab: ${error.message}`
-                );
-                contextError.url = url;
-                contextError.endpoint = normalizedEndpoint;
-                contextError.originalError = error;
-                throw contextError;
+                throw this._wrapNetworkError(error, url, normalizedEndpoint);
             }
         }
 

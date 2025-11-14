@@ -255,7 +255,7 @@ class TestArgumentValidation(unittest.TestCase):
 
 
 class TestHTMLInjection(unittest.TestCase):
-    """Test HTML template injection and XSS prevention.
+    r"""Test HTML template injection and XSS prevention.
 
     Critical Security Tests:
     These tests prevent a specific attack: malicious input containing </script>
