@@ -47,40 +47,40 @@ A dynamic web page that fetches GitLab CI data via the GitLab API v4 and display
 
 ### Core Features (MVP)
 
-#### 1. User-Centric Organization
-- **Primary grouping**: Pipelines grouped by triggering user
-- **Hierarchy**: User → Pipelines → Jobs
-- **Visual structure**: Each user is a collapsible container
+#### 1. Project-Centric Organization
+- **Primary grouping**: Pipelines grouped by project
+- **Hierarchy**: Project → Pipelines → Jobs
+- **Visual structure**: Flat hierarchy with no collapsible groups - all items visible simultaneously for maximum density
 
 #### 2. Timeline Visualization
 - **X-axis**: Real-time timeline with hours and minutes
-- **Y-axis**: Users (rows)
-- **Items**:
-  - Pipelines positioned at their start time
-  - Duration represented by box width
-  - Jobs within pipelines positioned at their start time with their duration
+- **Y-axis**: Projects (rows)
+- **Visual Design for Maximum Density**:
+  - **Thin horizontal lines**: Both pipelines and jobs are rendered as thin lines (not thick bars)
+  - **Minimal vertical spacing**: Very little separation between rows to maximize information density
+  - **Flat hierarchy**: Jobs rendered directly under their pipeline line, no expandable/collapsible groups
+  - **Pipeline lines**: Thin horizontal lines positioned at their start time, width represents duration
+  - **Job lines**: Thin horizontal lines under each pipeline, positioned at their start time, width represents duration
+  - **Color coding**: Status indicated by line color (success=green, failed=red, running=blue, pending=gray, canceled=orange)
+  - **Tooltips**: Details shown on hover (status, duration, timestamps)
+  - **No wasted space**: Minimal padding, margins, and whitespace
 
 #### 3. Multi-Project Support
 - Query multiple projects within a GitLab group
 - Query specific list of projects by ID
 - Aggregate all pipelines across projects in single view
 
-#### 4. Collapsible Containers
-- Users can be collapsed/expanded
-- Pipelines within users can be collapsed/expanded
-- Maintains view state during session
-
-#### 5. Time Range Configuration
+#### 4. Time Range Configuration
 - User-configurable time range via CLI arguments
 - Support for relative time: "2 days ago", "last week"
 - Support for absolute time: "2025-01-10"
 
-#### 6. Auto-Refresh
+#### 5. Auto-Refresh
 - JavaScript polls GitLab API periodically (default: 60 seconds)
 - Updates GANTT chart without full page reload
 - Shows last update timestamp
 
-#### 7. Job Status Visualization
+#### 6. Job Status Visualization
 - Color-coded by status:
   - Success: Green
   - Failed: Red
@@ -106,13 +106,13 @@ GET /api/v4/projects/:id/pipelines/:pipeline_id/jobs
 #### Data Model
 ```javascript
 {
-  users: [
+  projects: [
     {
-      username: "user1",
+      id: 123,
+      name: "project-name",
       pipelines: [
         {
           id: 12345,
-          project: "project-name",
           status: "success",
           created_at: "2025-01-13T10:00:00Z",
           updated_at: "2025-01-13T10:15:00Z",
@@ -209,12 +209,31 @@ gitlab_ci_viz/
 - Ability to view last 7 days of activity for 10+ projects
 - Clear identification of pipeline overlaps and timing
 
+## Information Density Requirements
+
+**Critical Design Principle**: Maximize information density to show as much CI/CD activity as possible in a single viewport.
+
+### Density Targets
+- **Vertical density**: Display 50+ pipeline/job rows within a standard 1080p viewport
+- **Horizontal density**: Utilize full timeline width with minimal padding
+- **Line thickness**: Pipeline and job lines should be 2-4px tall (thin lines, not bars)
+- **Vertical spacing**: 1-2px between rows (minimal separation)
+- **No expandable UI**: Everything visible at once - no hidden/collapsed content
+- **Compact labels**: Project names truncated if needed to save horizontal space
+
+### Visual Hierarchy via Color, Not Size
+- **Status differentiation**: Use color (green/red/blue/gray/orange), not thickness
+- **Importance**: Use saturation or brightness, not size
+- **Tooltips for details**: Hover shows full information, keeping visual lightweight
+
 ## Future Enhancements (Out of Scope for MVP)
 - Export timeline as image
 - Save/load custom views
-- Runner-centric view (instead of user-centric)
+- Runner-centric view (instead of project-centric)
+- User-centric view grouping
 - Stage visualization (currently skipped to reduce clutter)
 - Responsive mobile view
+- Zoom and pan controls (beyond native browser scroll)
 
 ## Completed Beyond MVP
 - Click-through to GitLab pipeline and job pages (task-049)
