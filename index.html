@@ -17,6 +17,8 @@
             height: 600px;
             border: 1px solid #ccc;
             background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
         #status {
             margin-bottom: 20px;
@@ -322,8 +324,8 @@
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 12px;
             color: white;
         }
         .stat-item {
@@ -331,22 +333,89 @@
             flex-direction: column;
             align-items: center;
             text-align: center;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+        .stat-item:hover {
+            background: rgba(255,255,255,0.15);
         }
         .stat-value {
-            font-size: 1.8em;
+            font-size: 1.6em;
             font-weight: bold;
-            margin-bottom: 2px;
+            margin-bottom: 3px;
         }
         .stat-label {
-            font-size: 0.75em;
-            opacity: 0.9;
+            font-size: 0.7em;
+            opacity: 0.95;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
         }
         .stat-success { color: #4ade80; }
         .stat-failed { color: #f87171; }
         .stat-duration { color: #fbbf24; }
         .stat-rate { color: #60a5fa; }
+
+        /* Compact status badge indicators */
+        .status-badges {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 3px;
+            font-size: 0.75em;
+            font-weight: 500;
+        }
+        .status-badge.success { color: #4ade80; }
+        .status-badge.failed { color: #f87171; }
+        .status-badge.running { color: #60a5fa; }
+        .status-badge.pending { color: #fbbf24; }
+        .status-badge.canceled { color: #f97316; }
+
+        /* Project badges in stats */
+        .project-badges {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .project-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 6px;
+            background: rgba(0,0,0,0.15);
+            border-radius: 2px;
+            font-size: 0.65em;
+            font-weight: 500;
+            color: white;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .project-badge::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 4px;
+            flex-shrink: 0;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -372,13 +441,15 @@
             </div>
             <div class="stat-item">
                 <div class="stat-value" id="stat-total-pipelines">0</div>
-                <div class="stat-label">Total Pipelines</div>
+                <div class="stat-label">Pipelines</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value" id="stat-total-jobs">0</div>
-                <div class="stat-label">Total Jobs</div>
+                <div class="stat-label">Jobs</div>
             </div>
         </div>
+        <div class="status-badges" id="status-badges-container"></div>
+        <div class="project-badges" id="project-badges-container"></div>
     </div>
     <div id="time-range-label" style="display: none;">
         Activity Window: <span class="time-range">Loading...</span>
@@ -826,6 +897,52 @@
             document.getElementById('stat-avg-duration').textContent = durationStr;
             document.getElementById('stat-total-pipelines').textContent = total;
             document.getElementById('stat-total-jobs').textContent = jobs.length;
+
+            // Update status badges
+            const badgesContainer = document.getElementById('status-badges-container');
+            badgesContainer.innerHTML = '';
+
+            const statusOrder = ['running', 'pending', 'canceled'];
+            statusOrder.forEach(status => {
+                if (statusCounts[status] > 0) {
+                    const badge = document.createElement('div');
+                    badge.className = `status-badge ${status}`;
+                    badge.textContent = `${statusCounts[status]} ${status}`;
+                    badgesContainer.appendChild(badge);
+                }
+            });
+
+            // Update project badges - show top 5 projects
+            const projectBadgesContainer = document.getElementById('project-badges-container');
+            projectBadgesContainer.innerHTML = '';
+
+            const projectCounts = {};
+            pipelines.forEach(p => {
+                const project = projectMap.get(p.project_id);
+                if (project) {
+                    projectCounts[project.name] = (projectCounts[project.name] || 0) + 1;
+                }
+            });
+
+            const topProjects = Object.entries(projectCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+
+            topProjects.forEach(([projectName, count]) => {
+                const projectColor = getProjectColor(projectName);
+                const badge = document.createElement('div');
+                badge.className = 'project-badge';
+                badge.title = `${projectName}: ${count} pipelines`;
+                badge.textContent = `${projectName} (${count})`;
+                badge.style.setProperty('--project-color', projectColor);
+                const colorDot = badge.querySelector('::before') || null;
+                const styleElement = document.createElement('style');
+                styleElement.textContent = `.project-badge[style*="--project-color"] { color: var(--project-color, white); }`;
+                if (colorDot) {
+                    styleElement.textContent = `.project-badge[style*="--project-color"]::before { background-color: var(--project-color, white); }`;
+                }
+                projectBadgesContainer.appendChild(badge);
+            });
 
             // Show the stats div
             statsDiv.style.display = 'block';
