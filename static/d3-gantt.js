@@ -24,7 +24,7 @@ class D3GanttChart {
         this.config = config;
 
         // Layout configuration
-        this.margin = { top: 60, right: 20, bottom: 30, left: 200 };
+        this.margin = { top: 60, right: 20, bottom: 30, left: 120 };
         this.rowHeight = 24;
         this.barHeight = 18;
         this.labelPadding = 10;
@@ -172,7 +172,7 @@ class D3GanttChart {
                 rows.push({
                     type: 'pipeline',
                     level: 1,
-                    label: `Pipeline #${pipeline.id}`,
+                    label: `P#${pipeline.id}`,
                     start: pipeline.getStartTime(),
                     end: pipeline.getEndTime(),
                     status: pipeline.status,
@@ -453,8 +453,8 @@ class D3GanttChart {
                     .attr('dy', '0.35em')
                     .text(d => d.label)
                     .each(function(d) {
-                        // Truncate long labels
-                        const maxWidth = 180 - (d.level * 20);
+                        // Truncate long labels (adjusted for reduced left margin)
+                        const maxWidth = 100 - (d.level * 15);
                         const text = d3.select(this);
                         let textContent = text.text();
 
@@ -480,7 +480,7 @@ class D3GanttChart {
                     update.select('.gantt-label')
                         .text(d => d.label)
                         .each(function(d) {
-                            const maxWidth = 180 - (d.level * 20);
+                            const maxWidth = 100 - (d.level * 15);
                             const text = d3.select(this);
                             let textContent = text.text();
 
