@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>D3 GANTT Chart Test</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #visualization {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+            background-color: white;
+            overflow: auto;
+            position: relative;
+        }
+        .test-results {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .pass { color: green; }
+        .fail { color: red; }
+
+        /* D3.js GANTT chart styles */
+        .gantt-bar {
+            cursor: pointer;
+            stroke-width: 2;
+        }
+        .gantt-bar:hover {
+            stroke-width: 3;
+            filter: brightness(1.1);
+        }
+        .gantt-label {
+            font-size: 12px;
+            fill: #333;
+            cursor: pointer;
+            user-select: none;
+        }
+        .gantt-group-label {
+            font-weight: 600;
+            fill: #000;
+        }
+        .gantt-expand-icon {
+            cursor: pointer;
+            user-select: none;
+        }
+        .gantt-axis text {
+            font-size: 11px;
+            fill: #666;
+        }
+        .gantt-axis line, .gantt-axis path {
+            stroke: #ccc;
+        }
+        .gantt-grid line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 2,2;
+        }
+        .gantt-tooltip {
+            position: absolute;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            white-space: pre-line;
+        }
+
+        /* Status colors */
+        :root {
+            --status-success-bg: #28a745;
+            --status-success-border: #1e7e34;
+            --status-failed-bg: #dc3545;
+            --status-failed-border: #bd2130;
+            --status-running-bg: #007bff;
+            --status-running-border: #0056b3;
+        }
+
+        .pipeline-success { fill: var(--status-success-bg); stroke: var(--status-success-border); }
+        .pipeline-failed { fill: var(--status-failed-bg); stroke: var(--status-failed-border); }
+        .pipeline-running { fill: var(--status-running-bg); stroke: var(--status-running-border); }
+        .job-success { fill: var(--status-success-bg); stroke: var(--status-success-border); }
+        .job-failed { fill: var(--status-failed-bg); stroke: var(--status-failed-border); }
+    </style>
+</head>
+<body>
+    <h1>D3 GANTT Chart Test</h1>
+    <div class="test-results" id="results"></div>
+    <div id="visualization"></div>
+    <div class="gantt-tooltip" id="tooltip"></div>
+
+    <script src="/static/data-transformer.js"></script>
+    <script src="/static/d3-gantt.js"></script>
+    <script>
+        // Test results
+        const results = [];
+
+        function test(name, fn) {
+            try {
+                fn();
+                results.push(`✓ ${name}`);
+                return true;
+            } catch (e) {
+                results.push(`✗ ${name}: ${e.message}`);
+                return false;
+            }
+        }
+
+        // Mock data for testing
+        const now = new Date();
+        const hourAgo = new Date(now.getTime() - 3600000);
+        const twoHoursAgo = new Date(now.getTime() - 7200000);
+
+        const mockPipelines = [
+            {
+                id: 1,
+                project_id: 100,
+                status: 'success',
+                created_at: twoHoursAgo.toISOString(),
+                started_at: twoHoursAgo.toISOString(),
+                finished_at: hourAgo.toISOString(),
+                duration: 3600,
+                web_url: 'https://gitlab.com/project/pipeline/1',
+                user: { id: 1, username: 'testuser', name: 'Test User' }
+            },
+            {
+                id: 2,
+                project_id: 100,
+                status: 'failed',
+                created_at: hourAgo.toISOString(),
+                started_at: hourAgo.toISOString(),
+                finished_at: now.toISOString(),
+                duration: 1800,
+                web_url: 'https://gitlab.com/project/pipeline/2',
+                user: { id: 1, username: 'testuser', name: 'Test User' }
+            }
+        ];
+
+        const mockJobs = [
+            {
+                id: 10,
+                name: 'build',
+                stage: 'build',
+                status: 'success',
+                created_at: twoHoursAgo.toISOString(),
+                started_at: twoHoursAgo.toISOString(),
+                finished_at: new Date(twoHoursAgo.getTime() + 1800000).toISOString(),
+                duration: 1800,
+                web_url: 'https://gitlab.com/project/job/10',
+                pipeline_id: 1
+            },
+            {
+                id: 11,
+                name: 'test',
+                stage: 'test',
+                status: 'success',
+                created_at: new Date(twoHoursAgo.getTime() + 1800000).toISOString(),
+                started_at: new Date(twoHoursAgo.getTime() + 1800000).toISOString(),
+                finished_at: hourAgo.toISOString(),
+                duration: 1800,
+                web_url: 'https://gitlab.com/project/job/11',
+                pipeline_id: 1
+            },
+            {
+                id: 20,
+                name: 'build',
+                stage: 'build',
+                status: 'failed',
+                created_at: hourAgo.toISOString(),
+                started_at: hourAgo.toISOString(),
+                finished_at: now.toISOString(),
+                duration: 1800,
+                web_url: 'https://gitlab.com/project/job/20',
+                pipeline_id: 2
+            }
+        ];
+
+        const mockProjectMap = new Map([[100, { id: 100, name: 'Test Project', path: 'test-project' }]]);
+
+        // Run tests
+        test('D3GanttChart class exists', () => {
+            if (typeof D3GanttChart !== 'function') {
+                throw new Error('D3GanttChart not found');
+            }
+        });
+
+        test('DataTransformer exists', () => {
+            if (typeof DataTransformer !== 'object') {
+                throw new Error('DataTransformer not found');
+            }
+        });
+
+        test('Can create GANTT chart instance', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+            if (!chart) {
+                throw new Error('Failed to create chart instance');
+            }
+        });
+
+        test('Can transform data to domain model', () => {
+            const domainModel = DataTransformer.transformToDomainModel(mockPipelines, mockJobs, mockProjectMap);
+            if (!domainModel || domainModel.length === 0) {
+                throw new Error('Domain model is empty');
+            }
+            if (domainModel[0].pipelines.length !== 2) {
+                throw new Error(`Expected 2 pipelines, got ${domainModel[0].pipelines.length}`);
+            }
+        });
+
+        test('Can render GANTT chart', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+            const domainModel = DataTransformer.transformToDomainModel(mockPipelines, mockJobs, mockProjectMap);
+
+            chart.render(domainModel, []);
+
+            // Check if SVG was created
+            const svg = document.querySelector('#visualization svg');
+            if (!svg) {
+                throw new Error('SVG not created');
+            }
+
+            // Check if chart has content
+            const bars = document.querySelectorAll('.gantt-bar');
+            if (bars.length === 0) {
+                throw new Error('No bars rendered');
+            }
+        });
+
+        test('Renders correct number of bars', () => {
+            const bars = document.querySelectorAll('.gantt-bar');
+            // 2 pipelines (collapsed by default, so no job bars visible)
+            if (bars.length !== 2) {
+                throw new Error(`Expected 2 bars, got ${bars.length}`);
+            }
+        });
+
+        test('Bars have correct CSS classes', () => {
+            const bars = document.querySelectorAll('.gantt-bar');
+            let hasSuccess = false;
+            let hasFailed = false;
+
+            bars.forEach(bar => {
+                if (bar.classList.contains('pipeline-success')) hasSuccess = true;
+                if (bar.classList.contains('pipeline-failed')) hasFailed = true;
+            });
+
+            if (!hasSuccess) throw new Error('No success bars found');
+            if (!hasFailed) throw new Error('No failed bars found');
+        });
+
+        test('Labels are rendered', () => {
+            const labels = document.querySelectorAll('.gantt-label');
+            if (labels.length === 0) {
+                throw new Error('No labels rendered');
+            }
+        });
+
+        test('Time axis is rendered', () => {
+            const axis = document.querySelector('.gantt-axis');
+            if (!axis) {
+                throw new Error('Axis not rendered');
+            }
+        });
+
+        test('Can toggle pipeline expansion', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+            const domainModel = DataTransformer.transformToDomainModel(mockPipelines, mockJobs, mockProjectMap);
+
+            chart.render(domainModel, []);
+
+            // Get initial bar count
+            const initialBars = document.querySelectorAll('.gantt-bar').length;
+
+            // Expand first pipeline
+            chart.togglePipeline(1);
+
+            // Should now have more bars (pipeline + jobs)
+            const expandedBars = document.querySelectorAll('.gantt-bar').length;
+            if (expandedBars <= initialBars) {
+                throw new Error(`Expected more bars after expansion, got ${expandedBars} vs ${initialBars}`);
+            }
+        });
+
+        // Display results
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '<h2>Test Results</h2>' +
+            results.map(r => {
+                const className = r.startsWith('✓') ? 'pass' : 'fail';
+                return `<div class="${className}">${r}</div>`;
+            }).join('');
+
+        const passCount = results.filter(r => r.startsWith('✓')).length;
+        const totalCount = results.length;
+
+        resultsDiv.innerHTML += `<h3>Summary: ${passCount}/${totalCount} tests passed</h3>`;
+
+        if (passCount === totalCount) {
+            console.log('All tests passed!');
+        } else {
+            console.error(`${totalCount - passCount} tests failed`);
+        }
+    </script>
+</body>
+</html>

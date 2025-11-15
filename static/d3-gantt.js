@@ -1,0 +1,573 @@
+/**
+ * D3.js GANTT Chart Implementation
+ *
+ * Renders hierarchical GitLab CI pipeline data as an interactive GANTT timeline.
+ * Replaces vis.js with pure d3.js for better performance and control.
+ *
+ * Features:
+ * - Hierarchical grouping (Projects → Pipelines → Jobs)
+ * - Collapsible pipeline groups
+ * - Status-based color coding
+ * - Interactive tooltips
+ * - Click to open GitLab pages
+ * - Resource contention visualization
+ * - Auto-zoom to data range
+ * - Smooth animations
+ */
+
+class D3GanttChart {
+    constructor(containerId, config) {
+        this.container = document.getElementById(containerId);
+        this.config = config;
+
+        // Layout configuration
+        this.margin = { top: 60, right: 20, bottom: 30, left: 200 };
+        this.rowHeight = 24;
+        this.barHeight = 18;
+        this.labelPadding = 10;
+        this.indentWidth = 20;
+
+        // State
+        this.expandedPipelines = new Set();
+        this.data = [];
+        this.contentionPeriods = [];
+
+        // D3 scales
+        this.xScale = null;
+        this.yScale = null;
+
+        // SVG elements
+        this.svg = null;
+        this.chartGroup = null;
+        this.tooltip = d3.select('#tooltip');
+
+        this.initializeSVG();
+    }
+
+    /**
+     * Initialize SVG container and structure
+     */
+    initializeSVG() {
+        // Clear existing content
+        this.container.innerHTML = '';
+
+        // Create SVG
+        this.svg = d3.select(this.container)
+            .append('svg')
+            .attr('width', '100%')
+            .attr('height', '100%')
+            .style('display', 'block');
+
+        // Create main chart group
+        this.chartGroup = this.svg.append('g')
+            .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+
+        // Create layers (order matters for z-index)
+        this.chartGroup.append('g').attr('class', 'grid-layer');
+        this.chartGroup.append('g').attr('class', 'contention-layer');
+        this.chartGroup.append('g').attr('class', 'bars-layer');
+        this.chartGroup.append('g').attr('class', 'current-time-layer');
+        this.chartGroup.append('g').attr('class', 'axis-layer');
+        this.svg.append('g').attr('class', 'labels-layer')
+            .attr('transform', `translate(0,${this.margin.top})`);
+    }
+
+    /**
+     * Render GANTT chart with given data
+     * @param {Array} domainModel - Array of User/Project objects with pipelines
+     * @param {Array} contentionPeriods - Resource contention periods
+     */
+    render(domainModel, contentionPeriods = []) {
+        console.log('D3 GANTT: Rendering with', domainModel.length, 'groups');
+
+        this.data = domainModel;
+        this.contentionPeriods = contentionPeriods;
+
+        // Transform data to flat row structure
+        const rows = this.transformToRows(domainModel);
+        console.log('D3 GANTT: Generated', rows.length, 'rows');
+
+        if (rows.length === 0) {
+            console.warn('No rows to render');
+            return;
+        }
+
+        // Calculate dimensions
+        const containerRect = this.container.getBoundingClientRect();
+        const width = containerRect.width - this.margin.left - this.margin.right;
+        const height = Math.max(rows.length * this.rowHeight, 400);
+
+        // Update SVG height
+        this.svg.attr('height', height + this.margin.top + this.margin.bottom);
+
+        // Get time extent from all activities
+        const allActivities = rows.filter(r => r.type !== 'group');
+        if (allActivities.length === 0) {
+            console.warn('No activities to render');
+            return;
+        }
+
+        const timeExtent = d3.extent(allActivities.flatMap(r => [
+            new Date(r.start),
+            new Date(r.end)
+        ]));
+
+        // Add 5% padding to time range
+        const timePadding = (timeExtent[1] - timeExtent[0]) * 0.05;
+        timeExtent[0] = new Date(timeExtent[0].getTime() - timePadding);
+        timeExtent[1] = new Date(timeExtent[1].getTime() + timePadding);
+
+        // Create scales
+        this.xScale = d3.scaleTime()
+            .domain(timeExtent)
+            .range([0, width]);
+
+        this.yScale = d3.scaleBand()
+            .domain(rows.map((r, i) => i))
+            .range([0, height])
+            .padding(0.1);
+
+        // Render layers
+        this.renderGrid(width, height);
+        this.renderContention(width);
+        this.renderBars(rows);
+        this.renderCurrentTime(height);
+        this.renderAxis(width);
+        this.renderLabels(rows);
+    }
+
+    /**
+     * Transform domain model to flat row structure for rendering
+     */
+    transformToRows(domainModel) {
+        const rows = [];
+
+        for (const project of domainModel) {
+            // Project group row
+            rows.push({
+                type: 'group',
+                level: 0,
+                label: project.getDisplayName(),
+                expanded: true,
+                projectId: project.id
+            });
+
+            // Pipeline rows
+            for (const pipeline of project.pipelines) {
+                const pipelineExpanded = this.expandedPipelines.has(pipeline.id);
+
+                // Pipeline bar row
+                rows.push({
+                    type: 'pipeline',
+                    level: 1,
+                    label: `Pipeline #${pipeline.id}`,
+                    start: pipeline.getStartTime(),
+                    end: pipeline.getEndTime(),
+                    status: pipeline.status,
+                    expanded: pipelineExpanded,
+                    pipeline: pipeline,
+                    projectId: pipeline.projectId
+                });
+
+                // Job rows (if pipeline expanded)
+                if (pipelineExpanded) {
+                    for (const job of pipeline.jobs) {
+                        rows.push({
+                            type: 'job',
+                            level: 2,
+                            label: `${job.stage}: ${job.name}`,
+                            start: job.getStartTime(),
+                            end: job.getEndTime(),
+                            status: job.status,
+                            job: job,
+                            pipelineId: pipeline.id,
+                            projectId: pipeline.projectId
+                        });
+                    }
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    /**
+     * Render background grid
+     */
+    renderGrid(width, height) {
+        const gridLayer = this.chartGroup.select('.grid-layer');
+        gridLayer.selectAll('*').remove();
+
+        // Vertical grid lines at time intervals
+        const xTicks = this.xScale.ticks(10);
+
+        gridLayer.selectAll('line')
+            .data(xTicks)
+            .join('line')
+            .attr('class', 'gantt-grid')
+            .attr('x1', d => this.xScale(d))
+            .attr('x2', d => this.xScale(d))
+            .attr('y1', 0)
+            .attr('y2', height);
+    }
+
+    /**
+     * Render resource contention background
+     */
+    renderContention(width) {
+        const contentionLayer = this.chartGroup.select('.contention-layer');
+        contentionLayer.selectAll('*').remove();
+
+        if (!this.contentionPeriods || this.contentionPeriods.length === 0) {
+            return;
+        }
+
+        // Get SVG height for full-height background
+        const svgHeight = parseFloat(this.svg.attr('height')) - this.margin.top - this.margin.bottom;
+
+        contentionLayer.selectAll('rect')
+            .data(this.contentionPeriods)
+            .join('rect')
+            .attr('class', d => `contention-${d.level}`)
+            .attr('x', d => this.xScale(new Date(d.start)))
+            .attr('y', 0)
+            .attr('width', d => {
+                const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                return Math.max(w, 2); // Minimum 2px width
+            })
+            .attr('height', svgHeight);
+    }
+
+    /**
+     * Render timeline bars (pipelines and jobs)
+     */
+    renderBars(rows) {
+        const barsLayer = this.chartGroup.select('.bars-layer');
+
+        const bars = barsLayer.selectAll('rect')
+            .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+
+        // Enter + Update
+        bars.join(
+            enter => enter.append('rect')
+                .attr('class', d => `gantt-bar ${d.type}-${d.status}`)
+                .attr('x', d => this.xScale(new Date(d.start)))
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
+                })
+                .attr('width', 0)
+                .attr('height', this.barHeight)
+                .attr('rx', 3)
+                .on('click', (event, d) => this.handleBarClick(event, d))
+                .on('mouseenter', (event, d) => this.showTooltip(event, d))
+                .on('mouseleave', () => this.hideTooltip())
+                .call(enter => enter.transition()
+                    .duration(500)
+                    .attr('width', d => {
+                        const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                        return Math.max(w, 4); // Minimum 4px width
+                    })
+                ),
+            update => update
+                .call(update => update.transition()
+                    .duration(300)
+                    .attr('x', d => this.xScale(new Date(d.start)))
+                    .attr('y', (d, i) => {
+                        const rowIndex = rows.indexOf(d);
+                        return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
+                    })
+                    .attr('width', d => {
+                        const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                        return Math.max(w, 4);
+                    })
+                )
+        );
+    }
+
+    /**
+     * Render current time indicator
+     */
+    renderCurrentTime(height) {
+        const currentTimeLayer = this.chartGroup.select('.current-time-layer');
+        currentTimeLayer.selectAll('*').remove();
+
+        const now = new Date();
+
+        // Only show if within time range
+        if (now >= this.xScale.domain()[0] && now <= this.xScale.domain()[1]) {
+            currentTimeLayer.append('line')
+                .attr('class', 'gantt-current-time')
+                .attr('x1', this.xScale(now))
+                .attr('x2', this.xScale(now))
+                .attr('y1', 0)
+                .attr('y2', height);
+        }
+    }
+
+    /**
+     * Render time axis
+     */
+    renderAxis(width) {
+        const axisLayer = this.chartGroup.select('.axis-layer');
+        axisLayer.selectAll('*').remove();
+
+        // Top axis
+        const xAxisTop = d3.axisTop(this.xScale)
+            .ticks(10)
+            .tickFormat(d3.timeFormat('%b %d %H:%M'));
+
+        axisLayer.append('g')
+            .attr('class', 'gantt-axis')
+            .attr('transform', `translate(0, -10)`)
+            .call(xAxisTop);
+
+        // Major time labels (dates)
+        const xAxisDays = d3.axisTop(this.xScale)
+            .ticks(d3.timeDay.every(1))
+            .tickFormat(d3.timeFormat('%a %b %d'));
+
+        axisLayer.append('g')
+            .attr('class', 'gantt-axis')
+            .attr('transform', `translate(0, -30)`)
+            .call(xAxisDays)
+            .selectAll('text')
+            .style('font-weight', 'bold');
+    }
+
+    /**
+     * Render row labels (projects, pipelines, jobs)
+     */
+    renderLabels(rows) {
+        const labelsLayer = this.svg.select('.labels-layer');
+
+        const labels = labelsLayer.selectAll('g')
+            .data(rows, (d, i) => `${d.type}-${i}`);
+
+        // Enter + Update
+        labels.join(
+            enter => {
+                const g = enter.append('g')
+                    .attr('transform', (d, i) => `translate(0, ${this.yScale(i)})`);
+
+                // Background rect for click area
+                g.append('rect')
+                    .attr('width', this.margin.left)
+                    .attr('height', this.rowHeight)
+                    .attr('fill', 'transparent')
+                    .style('cursor', d => d.type === 'pipeline' ? 'pointer' : 'default')
+                    .on('click', (event, d) => {
+                        if (d.type === 'pipeline') {
+                            this.togglePipeline(d.pipeline.id);
+                        }
+                    });
+
+                // Expand/collapse icon for pipelines
+                g.filter(d => d.type === 'pipeline')
+                    .append('text')
+                    .attr('class', 'gantt-expand-icon')
+                    .attr('x', d => d.level * this.indentWidth)
+                    .attr('y', this.rowHeight / 2)
+                    .attr('dy', '0.35em')
+                    .attr('font-size', '14px')
+                    .text(d => d.expanded ? '▼' : '▶')
+                    .on('click', (event, d) => {
+                        event.stopPropagation();
+                        this.togglePipeline(d.pipeline.id);
+                    });
+
+                // Label text
+                g.append('text')
+                    .attr('class', d => d.type === 'group' ? 'gantt-label gantt-group-label' : 'gantt-label')
+                    .attr('x', d => d.level * this.indentWidth + (d.type === 'pipeline' ? 20 : this.labelPadding))
+                    .attr('y', this.rowHeight / 2)
+                    .attr('dy', '0.35em')
+                    .text(d => d.label)
+                    .each(function(d) {
+                        // Truncate long labels
+                        const maxWidth = 180 - (d.level * 20);
+                        const text = d3.select(this);
+                        let textContent = text.text();
+
+                        while (this.getComputedTextLength() > maxWidth && textContent.length > 0) {
+                            textContent = textContent.slice(0, -1);
+                            text.text(textContent + '...');
+                        }
+                    });
+
+                return g;
+            },
+            update => update
+                .call(update => update.transition()
+                    .duration(300)
+                    .attr('transform', (d, i) => `translate(0, ${this.yScale(i)})`)
+                )
+                .call(update => {
+                    update.select('.gantt-expand-icon')
+                        .text(d => d.expanded ? '▼' : '▶');
+
+                    update.select('.gantt-label')
+                        .text(d => d.label)
+                        .each(function(d) {
+                            const maxWidth = 180 - (d.level * 20);
+                            const text = d3.select(this);
+                            let textContent = text.text();
+
+                            while (this.getComputedTextLength() > maxWidth && textContent.length > 0) {
+                                textContent = textContent.slice(0, -1);
+                                text.text(textContent + '...');
+                            }
+                        });
+                })
+        );
+    }
+
+    /**
+     * Toggle pipeline expand/collapse
+     */
+    togglePipeline(pipelineId) {
+        if (this.expandedPipelines.has(pipelineId)) {
+            this.expandedPipelines.delete(pipelineId);
+        } else {
+            this.expandedPipelines.add(pipelineId);
+        }
+
+        // Re-render with new state
+        this.render(this.data, this.contentionPeriods);
+    }
+
+    /**
+     * Handle bar click (open GitLab page)
+     */
+    handleBarClick(event, d) {
+        let url = null;
+
+        if (d.type === 'job' && d.job) {
+            url = `${this.config.gitlabUrl}/${d.projectId}/-/jobs/${d.job.id}`;
+            console.log(`Opening job ${d.job.id}`);
+        } else if (d.type === 'pipeline' && d.pipeline) {
+            url = `${this.config.gitlabUrl}/${d.projectId}/-/pipelines/${d.pipeline.id}`;
+            console.log(`Opening pipeline ${d.pipeline.id}`);
+        }
+
+        if (url) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    }
+
+    /**
+     * Show tooltip on hover
+     */
+    showTooltip(event, d) {
+        let tooltipText = '';
+
+        if (d.type === 'pipeline' && d.pipeline) {
+            tooltipText = this.formatPipelineTooltip(d.pipeline);
+        } else if (d.type === 'job' && d.job) {
+            tooltipText = this.formatJobTooltip(d.job);
+        }
+
+        this.tooltip
+            .style('display', 'block')
+            .html(tooltipText)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY - 10) + 'px');
+    }
+
+    /**
+     * Hide tooltip
+     */
+    hideTooltip() {
+        this.tooltip.style('display', 'none');
+    }
+
+    /**
+     * Format pipeline tooltip
+     */
+    formatPipelineTooltip(pipeline) {
+        const parts = [];
+        parts.push(`Pipeline #${pipeline.id}`);
+        parts.push(`Status: ${pipeline.status}`);
+
+        if (pipeline.startedAt) {
+            parts.push(`Started: ${this.formatRelativeTime(pipeline.startedAt)}`);
+        } else {
+            parts.push(`Created: ${this.formatRelativeTime(pipeline.createdAt)}`);
+        }
+
+        if (pipeline.duration) {
+            parts.push(`Duration: ${this.formatDuration(pipeline.duration)}`);
+        }
+
+        return parts.join('\n');
+    }
+
+    /**
+     * Format job tooltip
+     */
+    formatJobTooltip(job) {
+        const parts = [];
+        parts.push(`Job: ${job.name}`);
+        parts.push(`Stage: ${job.stage}`);
+        parts.push(`Status: ${job.status}`);
+
+        if (job.startedAt) {
+            parts.push(`Started: ${this.formatRelativeTime(job.startedAt)}`);
+        } else {
+            parts.push(`Created: ${this.formatRelativeTime(job.createdAt)}`);
+        }
+
+        if (job.duration) {
+            parts.push(`Duration: ${this.formatDuration(job.duration)}`);
+        }
+
+        return parts.join('\n');
+    }
+
+    /**
+     * Format relative time (e.g., "2 hours ago")
+     */
+    formatRelativeTime(date) {
+        const now = new Date();
+        const diffMs = now - new Date(date);
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+
+        if (diffSec < 60) {
+            return 'just now';
+        } else if (diffMin < 60) {
+            return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+        } else if (diffHour < 24) {
+            return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+        } else if (diffDay < 7) {
+            return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+        } else {
+            const diffWeek = Math.floor(diffDay / 7);
+            return `${diffWeek} week${diffWeek !== 1 ? 's' : ''} ago`;
+        }
+    }
+
+    /**
+     * Format duration in human-readable format
+     */
+    formatDuration(seconds) {
+        if (!seconds || seconds < 0) return 'N/A';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
+    }
+}
+
+// Export to window for use in index.html
+window.D3GanttChart = D3GanttChart;

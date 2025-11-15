@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GitLab CI GANTT Visualizer</title>
-    <link href="/static/vis-timeline-graph2d-8.3.1.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,6 +20,8 @@
             background-color: white;
             border-radius: 4px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: auto;
+            position: relative;
         }
         #status {
             margin-bottom: 6px;
@@ -73,38 +75,6 @@
             font-family: monospace;
             font-size: 0.9em;
         }
-        .resolution-steps {
-            margin-top: 10px;
-            padding-left: 20px;
-        }
-        .resolution-steps li {
-            margin: 5px 0;
-        }
-
-        #time-range-label {
-            display: none !important;
-        }
-        #time-range-label .time-range {
-            font-weight: normal;
-            color: #155724;
-        }
-
-        #last-update {
-            display: none !important;
-        }
-        #last-update.refreshing {
-            background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-        }
-        #last-update .timestamp {
-            font-weight: bold;
-        }
-        #last-update .refresh-indicator {
-            display: inline-block;
-            margin-left: 10px;
-            font-style: italic;
-            color: #6c757d;
-        }
 
         /* Status color palette */
         :root {
@@ -118,108 +88,6 @@
             --status-neutral-border: #545b62;
             --status-canceled-bg: #fd7e14;
             --status-canceled-border: #dc6502;
-        }
-
-        /* Pipeline status colors */
-        .vis-item.pipeline-success {
-            background-color: var(--status-success-bg);
-            border-color: var(--status-success-border);
-            color: white;
-        }
-        .vis-item.pipeline-failed {
-            background-color: var(--status-failed-bg);
-            border-color: var(--status-failed-border);
-            color: white;
-        }
-        .vis-item.pipeline-running {
-            background-color: var(--status-running-bg);
-            border-color: var(--status-running-border);
-            color: white;
-        }
-        .vis-item.pipeline-pending,
-        .vis-item.pipeline-skipped,
-        .vis-item.pipeline-manual,
-        .vis-item.pipeline-created {
-            background-color: var(--status-neutral-bg);
-            border-color: var(--status-neutral-border);
-            color: white;
-        }
-        .vis-item.pipeline-canceled,
-        .vis-item.pipeline-cancelled {
-            background-color: var(--status-canceled-bg);
-            border-color: var(--status-canceled-border);
-            color: white;
-        }
-
-        /* Job status colors */
-        .vis-item.job-success {
-            background-color: var(--status-success-bg);
-            border-color: var(--status-success-border);
-            color: white;
-        }
-        .vis-item.job-failed {
-            background-color: var(--status-failed-bg);
-            border-color: var(--status-failed-border);
-            color: white;
-        }
-        .vis-item.job-running {
-            background-color: var(--status-running-bg);
-            border-color: var(--status-running-border);
-            color: white;
-        }
-        .vis-item.job-pending,
-        .vis-item.job-skipped,
-        .vis-item.job-manual,
-        .vis-item.job-created {
-            background-color: var(--status-neutral-bg);
-            border-color: var(--status-neutral-border);
-            color: white;
-        }
-        .vis-item.job-canceled,
-        .vis-item.job-cancelled {
-            background-color: var(--status-canceled-bg);
-            border-color: var(--status-canceled-border);
-            color: white;
-        }
-
-        /* Clickable items cursor */
-        .vis-item.pipeline-success,
-        .vis-item.pipeline-failed,
-        .vis-item.pipeline-running,
-        .vis-item.pipeline-pending,
-        .vis-item.pipeline-skipped,
-        .vis-item.pipeline-manual,
-        .vis-item.pipeline-created,
-        .vis-item.pipeline-canceled,
-        .vis-item.pipeline-cancelled,
-        .vis-item.job-success,
-        .vis-item.job-failed,
-        .vis-item.job-running,
-        .vis-item.job-pending,
-        .vis-item.job-skipped,
-        .vis-item.job-manual,
-        .vis-item.job-created,
-        .vis-item.job-canceled,
-        .vis-item.job-cancelled {
-            cursor: pointer;
-        }
-
-        /* Resource contention background shading */
-        .vis-item.contention-low {
-            background-color: rgba(255, 235, 59, 0.15);
-            border: none;
-        }
-        .vis-item.contention-medium {
-            background-color: rgba(255, 152, 0, 0.20);
-            border: none;
-        }
-        .vis-item.contention-high {
-            background-color: rgba(244, 67, 54, 0.25);
-            border: none;
-        }
-        .vis-item.contention-critical {
-            background-color: rgba(183, 28, 28, 0.30);
-            border: none;
         }
 
         /* Filter controls */
@@ -354,7 +222,7 @@
         .stat-duration { color: #fbbf24; }
         .stat-rate { color: #60a5fa; }
 
-        /* Compact status badge indicators */
+        /* Status badges */
         .status-badges {
             display: flex;
             gap: 4px;
@@ -373,26 +241,20 @@
             border-radius: 3px;
             font-size: 0.7em;
             font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .status-badge:hover {
+            background: rgba(0,0,0,0.35);
+            transform: scale(1.05);
         }
         .status-badge.success { color: #4ade80; }
         .status-badge.failed { color: #f87171; }
         .status-badge.running { color: #60a5fa; }
         .status-badge.pending { color: #fbbf24; }
         .status-badge.canceled { color: #f97316; }
-        .status-badge.clickable {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .status-badge.clickable:hover {
-            background: rgba(0,0,0,0.35);
-            transform: scale(1.05);
-        }
-        .status-badge.inactive {
-            opacity: 0.5;
-            background: rgba(0,0,0,0.1);
-        }
 
-        /* Project badges in stats */
+        /* Project badges */
         .project-badges {
             display: flex;
             gap: 3px;
@@ -416,47 +278,88 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .project-badge::before {
-            content: '';
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            margin-right: 4px;
-            flex-shrink: 0;
-        }
 
-        /* Compact view toggle */
-        #compact-mode-toggle {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 8px;
-            padding: 8px 10px;
-            background-color: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.95em;
+        /* D3.js GANTT chart styles */
+        .gantt-row {
+            cursor: pointer;
         }
-        #compact-mode-toggle label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        .gantt-row:hover {
+            opacity: 0.95;
+        }
+        .gantt-bar {
+            cursor: pointer;
+            stroke-width: 2;
+        }
+        .gantt-bar:hover {
+            stroke-width: 3;
+            filter: brightness(1.1);
+        }
+        .gantt-label {
+            font-size: 12px;
+            fill: #333;
             cursor: pointer;
             user-select: none;
-            font-size: 0.9em;
-            color: #333;
         }
-        #compact-mode-toggle input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
+        .gantt-group-label {
+            font-weight: 600;
+            fill: #000;
+        }
+        .gantt-expand-icon {
             cursor: pointer;
+            user-select: none;
         }
-        #compact-mode-toggle .hint {
-            margin-left: auto;
-            font-size: 0.8em;
-            color: #666;
+        .gantt-axis text {
+            font-size: 11px;
+            fill: #666;
         }
+        .gantt-axis line, .gantt-axis path {
+            stroke: #ccc;
+        }
+        .gantt-grid line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 2,2;
+        }
+        .gantt-current-time {
+            stroke: red;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+        }
+        .gantt-tooltip {
+            position: absolute;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            white-space: pre-line;
+        }
+
+        /* Pipeline status colors */
+        .pipeline-success { fill: var(--status-success-bg); stroke: var(--status-success-border); }
+        .pipeline-failed { fill: var(--status-failed-bg); stroke: var(--status-failed-border); }
+        .pipeline-running { fill: var(--status-running-bg); stroke: var(--status-running-border); }
+        .pipeline-pending, .pipeline-skipped, .pipeline-manual, .pipeline-created {
+            fill: var(--status-neutral-bg); stroke: var(--status-neutral-border);
+        }
+        .pipeline-canceled, .pipeline-cancelled { fill: var(--status-canceled-bg); stroke: var(--status-canceled-border); }
+
+        /* Job status colors */
+        .job-success { fill: var(--status-success-bg); stroke: var(--status-success-border); }
+        .job-failed { fill: var(--status-failed-bg); stroke: var(--status-failed-border); }
+        .job-running { fill: var(--status-running-bg); stroke: var(--status-running-border); }
+        .job-pending, .job-skipped, .job-manual, .job-created {
+            fill: var(--status-neutral-bg); stroke: var(--status-neutral-border);
+        }
+        .job-canceled, .job-cancelled { fill: var(--status-canceled-bg); stroke: var(--status-canceled-border); }
+
+        /* Contention background shading */
+        .contention-low { fill: rgba(255, 235, 59, 0.15); stroke: none; }
+        .contention-medium { fill: rgba(255, 152, 0, 0.20); stroke: none; }
+        .contention-high { fill: rgba(244, 67, 54, 0.25); stroke: none; }
+        .contention-critical { fill: rgba(183, 28, 28, 0.30); stroke: none; }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -491,20 +394,6 @@
         </div>
         <div class="status-badges" id="status-badges-container"></div>
         <div class="project-badges" id="project-badges-container"></div>
-    </div>
-    <div id="compact-mode-toggle" style="display: none;">
-        <label>
-            <input type="checkbox" id="compact-mode-checkbox">
-            <span>Compact View</span>
-        </label>
-        <div class="hint">Collapse successful pipelines to reduce scrolling</div>
-    </div>
-    <div id="time-range-label" style="display: none;">
-        Activity Window: <span class="time-range">Loading...</span>
-    </div>
-    <div id="last-update" style="display: none;">
-        Last updated: <span class="timestamp">Never</span>
-        <span class="refresh-indicator"></span>
     </div>
     <div id="filter-controls" style="display: none;">
         <h3>Filter by Pipeline Status</h3>
@@ -544,16 +433,17 @@
     </div>
     <div id="status">Loading configuration...</div>
     <div id="visualization"></div>
+    <div class="gantt-tooltip" id="tooltip"></div>
 
-    <script src="/static/vis-timeline-graph2d-8.3.1.min.js"></script>
     <script src="/static/logger.js"></script>
     <script src="/static/error-formatter.js"></script>
     <script src="/static/api-client.js"></script>
     <script src="/static/data-transformer.js"></script>
     <script src="/static/contention-analyzer.js"></script>
+    <script src="/static/d3-gantt.js"></script>
     <script>
-        // Global timeline instance
-        let timeline = null;
+        // Global GANTT chart instance
+        let ganttChart = null;
 
         // Global API client instance
         let apiClient = null;
@@ -608,7 +498,7 @@
 
             matches(jobName) {
                 if (this.isEmpty()) {
-                    return true; // No filter, match all
+                    return true;
                 }
                 if (typeof jobName !== 'string') {
                     console.warn('JobSearchState.matches() received non-string job name:', jobName);
@@ -618,42 +508,30 @@
             }
         };
 
-        // Store unfiltered data for re-filtering (vis.js DataSets are primary storage)
+        // Store unfiltered data for re-filtering
         let unfilteredPipelines = [];
         let unfilteredJobs = [];
         let projectMap = new Map();
 
         /**
          * Compute filtered data based on current filter state
-         * Single authoritative function for applying both pipeline status and job name filters
-         * @returns {Object} {filteredPipelines, filteredJobs}
          */
         function computeFilteredData() {
-            // Filter pipelines by status
             const filteredPipelines = unfilteredPipelines.filter(pipeline => {
                 return FilterState.has(normalizeStatus(pipeline.status));
             });
 
-            // Filter jobs by pipeline membership and job name
             const filteredPipelineIds = new Set(filteredPipelines.map(p => p.id));
             const filteredJobs = unfilteredJobs.filter(job => {
-                // First check if job belongs to a filtered pipeline
                 if (!filteredPipelineIds.has(job.pipeline_id)) {
                     return false;
                 }
-                // Then check if job name matches search term
                 return JobSearchState.matches(job.name);
             });
 
-            // Log filtering results for observability
-            const jobsBeforeNameFilter = unfilteredJobs.filter(job =>
-                filteredPipelineIds.has(job.pipeline_id)
-            ).length;
-
             console.log(
                 `Applied filters: ${unfilteredPipelines.length} pipelines → ${filteredPipelines.length} filtered | ` +
-                `${jobsBeforeNameFilter} jobs → ${filteredJobs.length} filtered ` +
-                `(search: '${JobSearchState.searchTerm || '(none)'}')`
+                `${unfilteredJobs.length} jobs → ${filteredJobs.length} filtered`
             );
 
             return { filteredPipelines, filteredJobs };
@@ -661,97 +539,21 @@
 
         /**
          * Normalize pipeline status to handle GitLab API inconsistencies
-         * @param {string} status - Raw status from GitLab API
-         * @returns {string} Normalized status
          */
         function normalizeStatus(status) {
             return status === 'cancelled' ? 'canceled' : status;
         }
 
         /**
-         * Enrich timeline items with project context and metadata
-         * @param {Array} items - Raw timeline items from DataTransformer
-         * @param {Array} pipelines - Pipeline data to look up
-         * @param {Array} jobs - Job data to look up
-         * @param {Map} projectMap - Map of project ID to project object
-         * @returns {Array} Enriched items with project info and URLs
-         */
-        function enrichTimelineItems(items, pipelines, jobs, projectMap) {
-            return items.map(item => {
-                // Enrich pipeline items
-                if (item.id.startsWith('pipeline-item-')) {
-                    const pipelineId = parseInt(item.id.replace('pipeline-item-', ''), 10);
-                    const pipeline = pipelines.find(p => p.id === pipelineId);
-
-                    if (!pipeline) {
-                        throw new Error(
-                            `Data integrity error: Timeline item references unknown pipeline ${pipelineId}. ` +
-                            `This should never happen - indicates bug in DataTransformer.`
-                        );
-                    }
-
-                    const project = projectMap.get(pipeline.project_id);
-                    if (!project) {
-                        throw new Error(
-                            `Data integrity error: Pipeline ${pipelineId} references unknown project ${pipeline.project_id}. ` +
-                            `Available projects: [${Array.from(projectMap.keys()).join(', ')}]`
-                        );
-                    }
-
-                    const enrichedTooltip = `Project: ${project.name}\n${item.title}`;
-                    const projectColor = getProjectColor(project.name);
-
-                    return {
-                        ...item,
-                        content: `${project.name} #${pipeline.id}`,
-                        title: enrichedTooltip,
-                        style: `border-left: 4px solid ${projectColor};`,
-                        projectId: pipeline.project_id,
-                        pipelineId: pipeline.id
-                    };
-                }
-
-                // Enrich job items
-                if (item.id.startsWith('job-item-')) {
-                    const jobId = parseInt(item.id.replace('job-item-', ''), 10);
-
-                    // Find the job in the jobs array
-                    const job = jobs.find(j => j.id === jobId);
-                    if (job) {
-                        return {
-                            ...item,
-                            projectId: job.project_id,
-                            pipelineId: job.pipeline_id,
-                            jobId: job.id
-                        };
-                    }
-                }
-
-                // Return other items unchanged (e.g., background items)
-                return item;
-            });
-        }
-
-        /**
-         * Generate consistent color for project based on project name
-         * Uses simple hash function to generate HSL color with good contrast
+         * Generate consistent color for project
          */
         function getProjectColor(projectName) {
-            // Simple hash function
             let hash = 0;
             for (let i = 0; i < projectName.length; i++) {
                 hash = projectName.charCodeAt(i) + ((hash << 5) - hash);
             }
-
-            // Generate HSL color with:
-            // - Hue: 0-360 based on hash
-            // - Saturation: 45-55% for subtle but visible differentiation
-            // - Lightness: 60-70% for good contrast with text
             const hue = Math.abs(hash % 360);
-            const saturation = 50;
-            const lightness = 65;
-
-            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            return `hsl(${hue}, 50%, 65%)`;
         }
 
         /**
@@ -763,13 +565,10 @@
                 throw new Error('Critical initialization error: filter-controls element not found in DOM');
             }
 
-            // Show filter controls
             filterControls.style.display = 'block';
 
-            // Get all filter checkboxes
             const checkboxes = filterControls.querySelectorAll('input[type="checkbox"]');
 
-            // Add change event listeners to all checkboxes
             checkboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', function() {
                     const status = this.value;
@@ -783,7 +582,6 @@
                 });
             });
 
-            // Clear all button - uncheck all filters
             const clearButton = document.getElementById('clear-filters');
             if (clearButton) {
                 clearButton.addEventListener('click', function() {
@@ -796,7 +594,6 @@
                 });
             }
 
-            // Reset button - check all filters
             const resetButton = document.getElementById('reset-filters');
             if (resetButton) {
                 resetButton.addEventListener('click', function() {
@@ -809,10 +606,8 @@
                 });
             }
 
-            // Job search input event handler
             const jobSearchInput = document.getElementById('job-search-input');
             if (jobSearchInput) {
-                // Debounce search to avoid too many re-renders while typing
                 let searchTimeout = null;
                 jobSearchInput.addEventListener('input', function() {
                     clearTimeout(searchTimeout);
@@ -820,11 +615,10 @@
                         JobSearchState.set(this.value);
                         console.log('Job search term:', JobSearchState.searchTerm || '(empty)');
                         applyFilters();
-                    }, 300); // 300ms debounce
+                    }, 300);
                 });
             }
 
-            // Clear job search button
             const clearJobSearchButton = document.getElementById('clear-job-search');
             if (clearJobSearchButton) {
                 clearJobSearchButton.addEventListener('click', function() {
@@ -842,94 +636,31 @@
         }
 
         /**
-         * Initialize compact mode toggle
-         */
-        function initializeCompactMode() {
-            const toggleDiv = document.getElementById('compact-mode-toggle');
-            const checkbox = document.getElementById('compact-mode-checkbox');
-
-            if (!toggleDiv || !checkbox) {
-                return;
-            }
-
-            // Show compact mode toggle
-            toggleDiv.style.display = 'flex';
-
-            checkbox.addEventListener('change', function() {
-                const isCompact = this.checked;
-                console.log('Compact mode toggled:', isCompact);
-
-                // Collapse/expand successful pipelines
-                if (timeline && timeline.groupsData) {
-                    const groupsDataSet = timeline.groupsData.getDataSet();
-                    const allGroups = groupsDataSet.get({ returnType: 'Array' });
-
-                    allGroups.forEach(group => {
-                        // Toggle visibility of successful pipeline items
-                        if (group.id && group.id.startsWith('pipeline-') && !group.id.includes('failed') && !group.id.includes('running')) {
-                            // In compact mode, hide successful pipelines by styling them differently
-                            if (isCompact) {
-                                // We can't truly hide groups in vis.js, so we'll use CSS
-                                // For now, just log the toggle state
-                            }
-                        }
-                    });
-                }
-            });
-        }
-
-        /**
          * Apply active filters to timeline data
-         * Re-renders timeline with filtered pipelines and their jobs
          */
         function applyFilters() {
-            if (!timeline || unfilteredPipelines.length === 0) {
+            if (!ganttChart || unfilteredPipelines.length === 0) {
                 console.log('No data to filter yet');
                 return;
             }
 
-            // Use shared filter computation
             const { filteredPipelines, filteredJobs } = computeFilteredData();
 
-            // Transform filtered data (pass projectMap for project-based grouping)
-            const transformed = DataTransformer.transform(filteredPipelines, filteredJobs, projectMap);
-
-            // Calculate contention for filtered pipelines
             const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
             const allPipelines = domainModel.flatMap(user => user.pipelines);
             const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
-            const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
-            // Enrich items with project information (using shared function)
-            const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, filteredJobs, projectMap);
-
-            // Combine with contention backgrounds
-            const allItems = [...enrichedItems, ...contentionBackgrounds];
-
-            // Update timeline (auto-fits to new data)
-            // Note: Window state is NOT preserved across filter operations. This is intentional -
-            // preserving viewport state across filtered data creates misalignment and hidden state.
-            // Timeline auto-fits to show all current data.
-            // Clear existing data and add new data to the existing DataSets
-            // groupsData is a DataView wrapper, need to get underlying DataSet
-            const groupsDataSet = timeline.groupsData.getDataSet();
-            groupsDataSet.clear();
-            groupsDataSet.add(transformed.groups);
-
-            // itemsData is already a DataSet-like object with clear/add methods
-            timeline.itemsData.clear();
-            timeline.itemsData.add(allItems);
+            ganttChart.render(domainModel, contentionPeriods);
 
             console.log('Filters applied successfully');
         }
 
         /**
-         * Update statistics summary bar with pipeline metrics
+         * Update statistics summary bar
          */
         function updateStatsSummary(pipelines, jobs) {
             const statsDiv = document.getElementById('stats-summary');
 
-            // Count by status
             const statusCounts = {
                 success: 0,
                 failed: 0,
@@ -947,7 +678,6 @@
                     statusCounts[status]++;
                 }
 
-                // Calculate duration if both timestamps exist
                 if (p.created_at && p.updated_at) {
                     const duration = new Date(p.updated_at) - new Date(p.created_at);
                     if (duration > 0) {
@@ -957,15 +687,12 @@
                 }
             });
 
-            // Calculate success rate
             const total = pipelines.length;
             const successRate = total > 0 ? Math.round((statusCounts.success / total) * 100) : 0;
 
-            // Calculate average duration in minutes
             const avgDurationMs = pipelinesWithDuration > 0 ? totalDuration / pipelinesWithDuration : 0;
             const avgDurationMin = Math.round(avgDurationMs / 60000);
 
-            // Format duration nicely
             let durationStr;
             if (avgDurationMin < 60) {
                 durationStr = `${avgDurationMin}m`;
@@ -975,7 +702,6 @@
                 durationStr = `${hours}h ${mins}m`;
             }
 
-            // Update DOM
             document.getElementById('stat-success-count').textContent = statusCounts.success;
             document.getElementById('stat-failed-count').textContent = statusCounts.failed;
             document.getElementById('stat-success-rate').textContent = `${successRate}%`;
@@ -983,7 +709,7 @@
             document.getElementById('stat-total-pipelines').textContent = total;
             document.getElementById('stat-total-jobs').textContent = jobs.length;
 
-            // Update status badges - make them interactive filters
+            // Update status badges
             const badgesContainer = document.getElementById('status-badges-container');
             badgesContainer.innerHTML = '';
 
@@ -991,23 +717,19 @@
             statusOrder.forEach(status => {
                 if (statusCounts[status] > 0) {
                     const badge = document.createElement('div');
-                    badge.className = `status-badge ${status} clickable`;
+                    badge.className = `status-badge ${status}`;
                     badge.textContent = `${statusCounts[status]} ${status}`;
                     badge.title = `Click to filter only ${status} pipelines`;
 
-                    // Add click handler to filter by this status
                     badge.addEventListener('click', function() {
-                        // Uncheck all filters except this one
                         const filterCheckboxes = document.querySelectorAll('#filter-controls input[type="checkbox"]');
                         filterCheckboxes.forEach(cb => {
                             cb.checked = (cb.value === status);
                         });
 
-                        // Update FilterState
                         FilterState.clear();
                         FilterState.add(status);
 
-                        // Apply filters
                         applyFilters();
                         console.log(`Quick filter applied: ${status} only`);
                     });
@@ -1016,7 +738,7 @@
                 }
             });
 
-            // Update project badges - show top 5 projects
+            // Update project badges
             const projectBadgesContainer = document.getElementById('project-badges-container');
             projectBadgesContainer.innerHTML = '';
 
@@ -1033,79 +755,20 @@
                 .slice(0, 5);
 
             topProjects.forEach(([projectName, count]) => {
-                const projectColor = getProjectColor(projectName);
                 const badge = document.createElement('div');
                 badge.className = 'project-badge';
                 badge.title = `${projectName}: ${count} pipelines`;
                 badge.textContent = `${projectName} (${count})`;
-                badge.style.setProperty('--project-color', projectColor);
-                const colorDot = badge.querySelector('::before') || null;
-                const styleElement = document.createElement('style');
-                styleElement.textContent = `.project-badge[style*="--project-color"] { color: var(--project-color, white); }`;
-                if (colorDot) {
-                    styleElement.textContent = `.project-badge[style*="--project-color"]::before { background-color: var(--project-color, white); }`;
-                }
                 projectBadgesContainer.appendChild(badge);
             });
 
-            // Show the stats div
             statsDiv.style.display = 'block';
 
             console.log(`Stats updated: ${total} pipelines, ${jobs.length} jobs, ${successRate}% success rate`);
         }
 
         /**
-         * Update time range label to show activity window
-         * Uses DataTransformer.formatTimeRange() for business logic
-         */
-        function updateTimeRangeLabel() {
-            const timeRangeDiv = document.getElementById('time-range-label');
-            const timeRangeSpan = timeRangeDiv.querySelector('.time-range');
-
-            // Show the time range div
-            timeRangeDiv.style.display = 'block';
-
-            // Use DataTransformer for time range calculation (fail-fast on invalid input)
-            const { durationLabel, startDateStr, endDateStr } =
-                DataTransformer.formatTimeRange(CONFIG.updatedAfter);
-
-            timeRangeSpan.textContent = `${durationLabel}: ${startDateStr} - ${endDateStr}`;
-        }
-
-        /**
-         * Update last update timestamp display
-         */
-        function updateLastUpdateTimestamp(isRefreshing = false) {
-            const lastUpdateDiv = document.getElementById('last-update');
-            const timestampSpan = lastUpdateDiv.querySelector('.timestamp');
-            const refreshIndicator = lastUpdateDiv.querySelector('.refresh-indicator');
-
-            // Show the timestamp div
-            lastUpdateDiv.style.display = 'block';
-
-            if (isRefreshing) {
-                lastUpdateDiv.classList.add('refreshing');
-                refreshIndicator.textContent = '(refreshing...)';
-            } else {
-                lastUpdateDiv.classList.remove('refreshing');
-                const now = new Date();
-                const dateStr = now.toLocaleDateString();
-                const timeStr = now.toLocaleTimeString();
-                timestampSpan.textContent = `${dateStr} ${timeStr}`;
-
-                // Show next refresh time if auto-refresh is enabled
-                if (CONFIG.refreshInterval && CONFIG.refreshInterval > 0) {
-                    const nextRefreshSeconds = CONFIG.refreshInterval;
-                    const nextRefreshTime = new Date(now.getTime() + nextRefreshSeconds * 1000);
-                    refreshIndicator.textContent = `(next refresh at ${nextRefreshTime.toLocaleTimeString()})`;
-                } else {
-                    refreshIndicator.textContent = '(auto-refresh disabled)';
-                }
-            }
-        }
-
-        /**
-         * Update status display with appropriate styling
+         * Update status display
          */
         function updateStatus(message, type = 'info', details = null) {
             const statusDiv = document.getElementById('status');
@@ -1126,12 +789,9 @@
         }
 
         /**
-         * Display configuration status and initialize timeline
+         * Initialize on DOM load
          */
         document.addEventListener('DOMContentLoaded', function() {
-            const statusDiv = document.getElementById('status');
-
-            // Initialize API client
             try {
                 apiClient = new GitLabAPIClient(CONFIG);
 
@@ -1147,42 +807,19 @@
 
                 statusHtml += `Token: ✓ Present<br>`;
                 statusHtml += `API Client: ✓ Initialized<br>`;
+                statusHtml += `d3.js library: ✓ Loaded`;
                 updateStatus(statusHtml, 'success');
             } catch (error) {
                 const errorHtml = `<strong>Configuration Error</strong><br>${error.message}`;
                 updateStatus(errorHtml, 'error');
-                return; // Stop initialization if API client fails
-            }
-
-            // Test vis.js library
-            if (typeof vis === 'undefined') {
-                const errorHtml = '<strong>Library Error</strong><br>vis.js library failed to load';
-                updateStatus(errorHtml, 'error', 'Check browser console for details');
                 return;
             }
 
-            // Test DataTransformer module
-            if (typeof DataTransformer === 'undefined') {
-                const errorHtml = '<strong>Library Error</strong><br>DataTransformer module failed to load';
-                updateStatus(errorHtml, 'error', 'Check browser console for details');
-                return;
-            }
-
-            const statusDiv2 = document.getElementById('status');
-            statusDiv2.innerHTML += 'vis.js library: ✓ Loaded<br>';
-            statusDiv2.innerHTML += 'DataTransformer: ✓ Loaded';
-
-            // Update time range label
-            updateTimeRangeLabel();
-
-            // Initialize Timeline
-            initializeTimeline();
+            // Initialize GANTT chart
+            ganttChart = new D3GanttChart('visualization', CONFIG);
 
             // Initialize filter controls
             initializeFilterControls();
-
-            // Initialize compact mode toggle
-            initializeCompactMode();
 
             // Fetch and render data
             fetchAndRender();
@@ -1192,278 +829,79 @@
         });
 
         /**
-         * Initialize vis.js Timeline component with GANTT chart configuration
-         */
-        function initializeTimeline() {
-            const container = document.getElementById('visualization');
-
-            // Cleanup if timeline already exists (defensive, idempotent)
-            if (timeline) {
-                timeline.destroy();
-            }
-
-            // Create empty datasets for now (will be populated by API data)
-            const items = new vis.DataSet([]);
-            const groups = new vis.DataSet([]);
-
-            // Timeline options for GANTT chart style
-            // Show dates in day/month context, times in HH:mm format
-            // Helps operators quickly identify when pipelines ran
-            const options = {
-                // Stack items within groups
-                stack: true,
-
-                // Show current time line
-                showCurrentTime: true,
-
-                // Time axis format
-                format: {
-                    minorLabels: {
-                        minute: 'HH:mm',
-                        hour: 'HH:mm'
-                    },
-                    majorLabels: {
-                        minute: 'ddd D MMMM',
-                        hour: 'ddd D MMMM',
-                        day: 'MMMM YYYY'
-                    }
-                },
-
-                // Orientation
-                orientation: 'top',
-
-                // Enable grouping
-                groupOrder: 'content',
-
-                // Enable dragging and zooming
-                zoomable: true,
-                moveable: true,
-
-                // Tooltip
-                tooltip: {
-                    followMouse: true,
-                    overflowMethod: 'cap'
-                },
-
-                // Margins
-                margin: {
-                    item: {
-                        horizontal: 8,
-                        vertical: 3
-                    }
-                }
-            };
-
-            // Create Timeline instance
-            timeline = new vis.Timeline(container, items, groups, options);
-
-            // Add click event listener for opening GitLab pages
-            timeline.on('click', function(properties) {
-                // Check if an item was clicked (not just the background)
-                if (properties.item) {
-                    const itemId = properties.item;
-                    const items = timeline.itemsData;
-                    const item = items.get(itemId);
-
-                    if (!item) {
-                        console.error(`Click handler: Item ${itemId} not found in dataset. This indicates a vis.js bug or data corruption.`);
-                        return;
-                    }
-
-                    // Construct GitLab URL based on item type
-                    let url = null;
-
-                    if (item.projectId && item.pipelineId && item.jobId) {
-                        // Job item - link to job page
-                        url = `${CONFIG.gitlabUrl}/${item.projectId}/-/jobs/${item.jobId}`;
-                        console.log(`Opening job ${item.jobId} in project ${item.projectId}`);
-                    } else if (item.projectId && item.pipelineId) {
-                        // Pipeline item - link to pipeline page
-                        url = `${CONFIG.gitlabUrl}/${item.projectId}/-/pipelines/${item.pipelineId}`;
-                        console.log(`Opening pipeline ${item.pipelineId} in project ${item.projectId}`);
-                    }
-
-                    // Open URL in new tab if available
-                    if (url) {
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                    }
-                }
-            });
-
-            console.log('Timeline initialized successfully');
-        }
-
-
-        /**
-         * Schedule auto-refresh if enabled in configuration
+         * Schedule auto-refresh if enabled
          */
         function scheduleAutoRefresh() {
-            // Clear any existing timer
             if (refreshTimer) {
                 clearTimeout(refreshTimer);
                 refreshTimer = null;
             }
 
-            // Check if auto-refresh is enabled
             if (!CONFIG.refreshInterval || CONFIG.refreshInterval <= 0) {
-                console.log('Auto-refresh disabled (refreshInterval <= 0)');
+                console.log('Auto-refresh disabled');
                 return;
             }
 
             console.log(`Scheduling auto-refresh in ${CONFIG.refreshInterval} seconds`);
 
-            // Schedule next refresh
             refreshTimer = setTimeout(async () => {
                 console.log('Auto-refresh triggered');
-                await fetchAndRender(true); // Pass isRefresh=true
-                scheduleAutoRefresh(); // Schedule next refresh
+                await fetchAndRender(true);
+                scheduleAutoRefresh();
             }, CONFIG.refreshInterval * 1000);
         }
 
         /**
          * Fetch GitLab data and render on timeline
-         *
-         * Orchestrates the complete data flow:
-         * 1. Fetch projects from GitLab API
-         * 2. Fetch pipelines for those projects
-         * 3. Fetch jobs for those pipelines
-         * 4. Transform to vis.js format
-         * 5. Update timeline with transformed data
-         *
-         * @param {boolean} isRefresh - If true, indicates this is a refresh operation
          */
         async function fetchAndRender(isRefresh = false) {
             try {
-                // Indicate refresh is in progress
-                if (isRefresh) {
-                    updateLastUpdateTimestamp(true);
-                }
-
-                // Step 1: Fetch projects
                 const loadingMsg = isRefresh ? 'Refreshing data...' : 'Fetching projects from GitLab...';
                 showLoading(loadingMsg);
                 const projects = await apiClient.fetchProjects();
 
-                // Update global project map for enrichment
                 projectMap.clear();
                 projects.forEach(p => projectMap.set(p.id, p));
 
-                // Step 2: Fetch pipelines
                 showLoading(`Fetching pipelines from ${projects.length} projects...`);
                 const pipelines = await apiClient.fetchPipelines(projects, CONFIG.updatedAfter);
 
                 if (pipelines.length === 0) {
                     if (isRefresh) {
-                        // Update timestamp even when no new pipelines
-                        updateLastUpdateTimestamp(false);
-
-                        // Expected: no new updates since last refresh
                         updateStatus(
                             `<strong>No new pipelines</strong><br>` +
-                            `No pipeline updates since ${CONFIG.since}.<br>` +
-                            'This is normal - the chart will update automatically when new pipelines run.',
+                            `No pipeline updates since ${CONFIG.since}.`,
                             'success'
                         );
                     } else {
-                        // Actual problem: no data in time range
                         updateStatus(
                             '<strong>No pipelines found</strong><br>' +
-                            `No pipelines found in the specified time range (since ${CONFIG.since}).<br>` +
-                            'Try adjusting the time range or check if pipelines exist in the configured projects.',
+                            `No pipelines found in the specified time range (since ${CONFIG.since}).`,
                             'warning'
                         );
                     }
                     return;
                 }
 
-                // Step 3: Fetch jobs
                 showLoading(`Fetching jobs from ${pipelines.length} pipelines...`);
                 const jobs = await apiClient.fetchJobs(pipelines);
 
-                // Store unfiltered data for re-filtering
                 unfilteredPipelines = pipelines;
                 unfilteredJobs = jobs;
 
-                // Apply filters using shared computation function
                 const { filteredPipelines, filteredJobs } = computeFilteredData();
 
-                // Step 4: Transform to vis.js format (using filtered data, pass projectMap for project-based grouping)
                 showLoading('Transforming data for visualization...');
-                const transformed = DataTransformer.transform(filteredPipelines, filteredJobs, projectMap);
-
-                // Step 4a: Calculate resource contention and create background items (using filtered data)
                 const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
+
                 const allPipelines = domainModel.flatMap(user => user.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
-                const contentionBackgrounds = ContentionAnalyzer.toVisBackgroundItems(contentionPeriods);
 
-                // Step 5: Enrich pipeline items with project names and job items with project context
-                const enrichedItems = enrichTimelineItems(transformed.items, filteredPipelines, filteredJobs, projectMap);
+                showLoading('Rendering GANTT chart...');
+                ganttChart.render(domainModel, contentionPeriods);
 
-                // Step 6: Combine enriched items with contention backgrounds
-                const allItems = [...enrichedItems, ...contentionBackgrounds];
-
-                // Step 7: Update timeline
-                showLoading('Rendering timeline...');
-
-                // Preserve view state during auto-refresh to avoid disrupting user experience
-                let savedWindow = null;
-                let expandedGroups = null;
-                if (isRefresh && timeline) {
-                    // Save current viewport position
-                    savedWindow = timeline.getWindow();
-
-                    // Save which groups are expanded
-                    expandedGroups = new Set();
-                    const currentGroups = timeline.groupsData.get();
-                    currentGroups.forEach(group => {
-                        if (group.showNested === true) {
-                            expandedGroups.add(group.id);
-                        }
-                    });
-                    console.log(`State preservation: saved ${expandedGroups.size} expanded groups:`, Array.from(expandedGroups));
-
-                    // Restore expansion state BEFORE setting groups
-                    if (expandedGroups && expandedGroups.size > 0) {
-                        let restoredCount = 0;
-                        transformed.groups.forEach(group => {
-                            if (expandedGroups.has(group.id)) {
-                                group.showNested = true;
-                                restoredCount++;
-                                console.log(`State preservation: restoring expansion for group ${group.id}`);
-                            }
-                        });
-                        console.log(`State preservation: restored ${restoredCount} groups out of ${expandedGroups.size} saved`);
-                    }
-                }
-
-                // Update data (groups are already configured with correct showNested state)
-                // Clear existing data and add new data to the existing DataSets
-                // groupsData is a DataView wrapper, need to get underlying DataSet
-                const groupsDataSet = timeline.groupsData.getDataSet();
-                groupsDataSet.clear();
-                groupsDataSet.add(transformed.groups);
-
-                // itemsData is already a DataSet-like object with clear/add methods
-                timeline.itemsData.clear();
-                timeline.itemsData.add(allItems);
-
-                // Restore viewport position during auto-refresh
-                if (isRefresh && savedWindow) {
-                    // Restore viewport position (prevent jarring jumps)
-                    timeline.setWindow(savedWindow.start, savedWindow.end, {animation: false});
-                }
-
-                // Update last update timestamp
-                updateLastUpdateTimestamp(false);
-
-                // Update statistics summary
                 updateStatsSummary(pipelines, jobs);
 
-                // Update time range label (refresh current time)
-                updateTimeRangeLabel();
-
-                // Success message
                 const actionWord = isRefresh ? 'refreshed' : 'loaded';
                 const successMessage =
                     `<strong>Data ${actionWord} successfully</strong><br>` +
@@ -1476,7 +914,6 @@
                 const errorMessage = formatError(error);
                 updateStatus(errorMessage, 'error');
 
-                // Log full error details for debugging
                 if (error.originalError) {
                     console.error('Original error:', error.originalError);
                 }
