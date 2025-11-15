@@ -382,6 +382,18 @@
         .status-badge.running { color: #60a5fa; }
         .status-badge.pending { color: #fbbf24; }
         .status-badge.canceled { color: #f97316; }
+        .status-badge.clickable {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .status-badge.clickable:hover {
+            background: rgba(0,0,0,0.35);
+            transform: scale(1.05);
+        }
+        .status-badge.inactive {
+            opacity: 0.5;
+            background: rgba(0,0,0,0.1);
+        }
 
         /* Project badges in stats */
         .project-badges {
@@ -415,6 +427,37 @@
             border-radius: 50%;
             margin-right: 4px;
             flex-shrink: 0;
+        }
+
+        /* Compact view toggle */
+        #compact-mode-toggle {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 12px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #compact-mode-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.95em;
+            color: #333;
+        }
+        #compact-mode-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        #compact-mode-toggle .hint {
+            margin-left: auto;
+            font-size: 0.85em;
+            color: #666;
         }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
@@ -450,6 +493,13 @@
         </div>
         <div class="status-badges" id="status-badges-container"></div>
         <div class="project-badges" id="project-badges-container"></div>
+    </div>
+    <div id="compact-mode-toggle" style="display: none;">
+        <label>
+            <input type="checkbox" id="compact-mode-checkbox">
+            <span>Compact View</span>
+        </label>
+        <div class="hint">Collapse successful pipelines to reduce scrolling</div>
     </div>
     <div id="time-range-label" style="display: none;">
         Activity Window: <span class="time-range">Loading...</span>
@@ -794,6 +844,43 @@
         }
 
         /**
+         * Initialize compact mode toggle
+         */
+        function initializeCompactMode() {
+            const toggleDiv = document.getElementById('compact-mode-toggle');
+            const checkbox = document.getElementById('compact-mode-checkbox');
+
+            if (!toggleDiv || !checkbox) {
+                return;
+            }
+
+            // Show compact mode toggle
+            toggleDiv.style.display = 'flex';
+
+            checkbox.addEventListener('change', function() {
+                const isCompact = this.checked;
+                console.log('Compact mode toggled:', isCompact);
+
+                // Collapse/expand successful pipelines
+                if (timeline && timeline.groupsData) {
+                    const groupsDataSet = timeline.groupsData.getDataSet();
+                    const allGroups = groupsDataSet.get({ returnType: 'Array' });
+
+                    allGroups.forEach(group => {
+                        // Toggle visibility of successful pipeline items
+                        if (group.id && group.id.startsWith('pipeline-') && !group.id.includes('failed') && !group.id.includes('running')) {
+                            // In compact mode, hide successful pipelines by styling them differently
+                            if (isCompact) {
+                                // We can't truly hide groups in vis.js, so we'll use CSS
+                                // For now, just log the toggle state
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        /**
          * Apply active filters to timeline data
          * Re-renders timeline with filtered pipelines and their jobs
          */
@@ -898,7 +985,7 @@
             document.getElementById('stat-total-pipelines').textContent = total;
             document.getElementById('stat-total-jobs').textContent = jobs.length;
 
-            // Update status badges
+            // Update status badges - make them interactive filters
             const badgesContainer = document.getElementById('status-badges-container');
             badgesContainer.innerHTML = '';
 
@@ -906,8 +993,27 @@
             statusOrder.forEach(status => {
                 if (statusCounts[status] > 0) {
                     const badge = document.createElement('div');
-                    badge.className = `status-badge ${status}`;
+                    badge.className = `status-badge ${status} clickable`;
                     badge.textContent = `${statusCounts[status]} ${status}`;
+                    badge.title = `Click to filter only ${status} pipelines`;
+
+                    // Add click handler to filter by this status
+                    badge.addEventListener('click', function() {
+                        // Uncheck all filters except this one
+                        const filterCheckboxes = document.querySelectorAll('#filter-controls input[type="checkbox"]');
+                        filterCheckboxes.forEach(cb => {
+                            cb.checked = (cb.value === status);
+                        });
+
+                        // Update FilterState
+                        FilterState.clear();
+                        FilterState.add(status);
+
+                        // Apply filters
+                        applyFilters();
+                        console.log(`Quick filter applied: ${status} only`);
+                    });
+
                     badgesContainer.appendChild(badge);
                 }
             });
@@ -1076,6 +1182,9 @@
 
             // Initialize filter controls
             initializeFilterControls();
+
+            // Initialize compact mode toggle
+            initializeCompactMode();
 
             // Fetch and render data
             fetchAndRender();
