@@ -15,7 +15,7 @@ This makes it difficult to:
 - Understand timing and duration of pipelines across the organization
 
 ## Solution
-A dynamic web page that fetches GitLab CI data via the GitLab API v4 and displays it as an interactive GANTT chart using vis.js Timeline component.
+A dynamic web page that fetches GitLab CI data via the GitLab API v4 and displays it as an interactive GANTT chart using d3.js.
 
 ## User Personas
 **Primary**: DevOps engineers, team leads managing CI/CD infrastructure
@@ -28,14 +28,14 @@ A dynamic web page that fetches GitLab CI data via the GitLab API v4 and display
 - Obtain GitLab authentication token using `glab auth token` command
 - Parse command-line arguments for configuration
 - Inject token and configuration into HTML template as JavaScript variables
-- Serve static HTML page and vis.js assets via HTTP server
+- Serve static HTML page and d3.js assets via HTTP server
 
 **Does NOT:**
 - Query GitLab API
 - Store or cache data
 - Maintain state
 
-### Frontend (JavaScript + vis.js)
+### Frontend (JavaScript + d3.js)
 **Responsibilities:**
 - Execute all GitLab API v4 queries directly from browser
 - Fetch and aggregate pipeline/job data
@@ -89,8 +89,8 @@ A dynamic web page that fetches GitLab CI data via the GitLab API v4 and display
   - Canceled: Orange
 
 ### Local Asset Serving
-- vis.js library served locally (no CDN dependency)
-- Ensures tool works offline and without external dependencies
+- d3.js library served from CDN (v7.x)
+- Lightweight and widely available
 
 ## Technical Specifications
 
@@ -158,7 +158,7 @@ python serve.py --projects <id1,id2,id3> --since "2025-01-10"
   - Standard library only (no external dependencies)
 
 #### Frontend
-- **Visualization**: vis.js Timeline (v7.x latest)
+- **Visualization**: d3.js (v7.x)
 - **JavaScript**: Vanilla ES6+ (no framework dependencies)
 - **HTTP Client**: Fetch API
 
@@ -173,10 +173,10 @@ gitlab_ci_viz/
 ├── PRD.md                    # This document
 ├── README.md                 # Usage documentation
 ├── serve.py                  # Python backend script
-├── index.html                # HTML template
+├── templates/
+│   └── index.html            # HTML template
 ├── static/
-│   ├── vis-timeline-graph2d.min.js
-│   └── vis-timeline-graph2d.min.css
+│   └── d3-gantt.js           # d3.js GANTT visualization
 ├── shell.nix                 # Nix development environment
 ├── justfile                  # Task automation
 └── .gitignore
