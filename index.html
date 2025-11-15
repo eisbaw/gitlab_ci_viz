@@ -294,6 +294,15 @@
             stroke-width: 3;
             filter: brightness(1.1);
         }
+        .gantt-bar:focus {
+            outline: 3px solid #007bff;
+            outline-offset: 2px;
+            stroke-width: 3;
+            filter: brightness(1.1);
+        }
+        .gantt-bar:focus:not(:focus-visible) {
+            outline: none;
+        }
         .gantt-label {
             font-size: 12px;
             fill: #333;
@@ -307,6 +316,13 @@
         .gantt-expand-icon {
             cursor: pointer;
             user-select: none;
+        }
+        .gantt-expand-icon:focus {
+            outline: 2px solid #007bff;
+            outline-offset: 2px;
+        }
+        .gantt-expand-icon:focus:not(:focus-visible) {
+            outline: none;
         }
         .gantt-axis text {
             font-size: 11px;

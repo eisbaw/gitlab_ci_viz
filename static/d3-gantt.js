@@ -13,6 +13,9 @@
  * - Resource contention visualization
  * - Auto-zoom to data range
  * - Smooth animations
+ * - Keyboard accessibility (Tab navigation, Enter/Space activation)
+ * - ARIA labels for screen readers
+ * - Focus indicators for keyboard users
  */
 
 class D3GanttChart {
@@ -51,12 +54,21 @@ class D3GanttChart {
         // Clear existing content
         this.container.innerHTML = '';
 
-        // Create SVG
+        // Create SVG with accessibility attributes
         this.svg = d3.select(this.container)
             .append('svg')
             .attr('width', '100%')
             .attr('height', '100%')
+            .attr('role', 'img')
+            .attr('aria-label', 'GitLab CI Pipeline Timeline')
             .style('display', 'block');
+
+        // Add title and description for screen readers
+        this.svg.append('title')
+            .text('GitLab CI Pipeline Timeline');
+
+        this.svg.append('desc')
+            .text('Interactive timeline showing GitLab CI pipelines and jobs. Use Tab to navigate, Enter or Space to open items in GitLab.');
 
         // Create main chart group
         this.chartGroup = this.svg.append('g')
@@ -251,6 +263,9 @@ class D3GanttChart {
         bars.join(
             enter => enter.append('rect')
                 .attr('class', d => `gantt-bar ${d.type}-${d.status}`)
+                .attr('tabindex', '0')
+                .attr('role', 'button')
+                .attr('aria-label', d => this.getBarAriaLabel(d))
                 .attr('x', d => this.xScale(new Date(d.start)))
                 .attr('y', (d, i) => {
                     const rowIndex = rows.indexOf(d);
@@ -260,8 +275,11 @@ class D3GanttChart {
                 .attr('height', this.barHeight)
                 .attr('rx', 3)
                 .on('click', (event, d) => this.handleBarClick(event, d))
+                .on('keydown', (event, d) => this.handleBarKeydown(event, d))
                 .on('mouseenter', (event, d) => this.showTooltip(event, d))
                 .on('mouseleave', () => this.hideTooltip())
+                .on('focus', (event, d) => this.handleBarFocus(event, d))
+                .on('blur', () => this.hideTooltip())
                 .call(enter => enter.transition()
                     .duration(500)
                     .attr('width', d => {
@@ -270,6 +288,7 @@ class D3GanttChart {
                     })
                 ),
             update => update
+                .attr('aria-label', d => this.getBarAriaLabel(d))
                 .call(update => update.transition()
                     .duration(300)
                     .attr('x', d => this.xScale(new Date(d.start)))
@@ -283,6 +302,45 @@ class D3GanttChart {
                     })
                 )
         );
+    }
+
+    /**
+     * Generate accessible label for timeline bar
+     */
+    getBarAriaLabel(d) {
+        if (d.type === 'pipeline' && d.pipeline) {
+            return `Pipeline ${d.pipeline.id}, status: ${d.status}. Press Enter to open in GitLab.`;
+        } else if (d.type === 'job' && d.job) {
+            return `Job ${d.job.name}, stage: ${d.job.stage}, status: ${d.status}. Press Enter to open in GitLab.`;
+        }
+        return 'Timeline item';
+    }
+
+    /**
+     * Handle keyboard events on bars
+     */
+    handleBarKeydown(event, d) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.handleBarClick(event, d);
+        }
+    }
+
+    /**
+     * Handle focus on bar (show tooltip)
+     */
+    handleBarFocus(event, d) {
+        // Get bar element position for tooltip placement
+        const barElement = event.target;
+        const rect = barElement.getBoundingClientRect();
+
+        // Create a synthetic event with page coordinates for tooltip
+        const syntheticEvent = {
+            pageX: rect.left + rect.width / 2,
+            pageY: rect.top - 10
+        };
+
+        this.showTooltip(syntheticEvent, d);
     }
 
     /**
@@ -366,6 +424,10 @@ class D3GanttChart {
                 g.filter(d => d.type === 'pipeline')
                     .append('text')
                     .attr('class', 'gantt-expand-icon')
+                    .attr('tabindex', '0')
+                    .attr('role', 'button')
+                    .attr('aria-label', d => `${d.expanded ? 'Collapse' : 'Expand'} pipeline ${d.pipeline.id}`)
+                    .attr('aria-expanded', d => d.expanded ? 'true' : 'false')
                     .attr('x', d => d.level * this.indentWidth)
                     .attr('y', this.rowHeight / 2)
                     .attr('dy', '0.35em')
@@ -374,6 +436,13 @@ class D3GanttChart {
                     .on('click', (event, d) => {
                         event.stopPropagation();
                         this.togglePipeline(d.pipeline.id);
+                    })
+                    .on('keydown', (event, d) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            this.togglePipeline(d.pipeline.id);
+                        }
                     });
 
                 // Label text
@@ -404,6 +473,8 @@ class D3GanttChart {
                 )
                 .call(update => {
                     update.select('.gantt-expand-icon')
+                        .attr('aria-label', d => `${d.expanded ? 'Collapse' : 'Expand'} pipeline ${d.pipeline.id}`)
+                        .attr('aria-expanded', d => d.expanded ? 'true' : 'false')
                         .text(d => d.expanded ? '▼' : '▶');
 
                     update.select('.gantt-label')
