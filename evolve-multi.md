@@ -53,9 +53,9 @@ Once we have committed all files, we evaluate this HEAD across **four dimensions
    - **Screenshot agent**: Evaluate Density (D) and Usability (U) visually
    - **Performance agent**: Measure load time, check console for errors (P)
    - **Accessibility agent**: Test keyboard nav, check HTML semantics (A)
-6. Set git tag with format: `d3js-D<score>-U<score>-P<score>-A<score>-<commit-sha>`
-   - Example: `d3js-D98-U85-P92-A75-abc1234`
-   - Tags MUST be prefixed with "d3js-" to distinguish from vis.js tags
+6. Set git tag with format: `d3js/D<score>-U<score>-P<score>-A<score>-<commit-sha>`
+   - Example: `d3js/D98-U85-P92-A75-abc1234`
+   - Tags MUST be prefixed with "d3js/" to distinguish from vis.js tags
    - Include commit-sha to prevent tag clobbering
 
 ## Scoring Guidelines:
@@ -94,9 +94,9 @@ A solution is **non-dominated** (on the Pareto frontier) if no other solution do
 
 ## Selection Algorithm:
 
-1. Parse all git tags matching pattern `d3js-D<num>-U<num>-P<num>-A<num>-<sha>`
+1. Parse all git tags matching pattern `d3js/D<num>-U<num>-P<num>-A<num>-<sha>`
 2. Extract scores for each commit: `(D, U, P, A, sha)`
-3. **ONLY consider tags with "d3js-" prefix** - ignore all vis.js tags
+3. **ONLY consider tags with "d3js/" prefix** - ignore all vis.js tags
 3. Compute Pareto frontier:
    ```
    frontier = []
@@ -125,10 +125,10 @@ Use a sub-agent to:
 
 Example Pareto frontier (all are non-dominated):
 ```
-d3js-D100-U80-P90-A70-abc1234  (max density, lower usability/accessibility)
-d3js-D98-U95-P88-A75-def5678   (balanced)
-d3js-D95-U90-P95-A90-ghi9012   (excellent all-around but not max density)
-d3js-D100-U85-P85-A85-jkl3456  (max density, good others)
+d3js/D100-U80-P90-A70-abc1234  (max density, lower usability/accessibility)
+d3js/D98-U95-P88-A75-def5678   (balanced)
+d3js/D95-U90-P95-A90-ghi9012   (excellent all-around but not max density)
+d3js/D100-U85-P85-A85-jkl3456  (max density, good others)
 ```
 
 # Step 3: Generate Mutation
@@ -159,13 +159,13 @@ If the algorithm gets stuck or produces poor mutations:
 
 If you have existing single-score tags like `100.00-<sha>`:
 1. Re-evaluate them with multi-objective scoring
-2. Create new tags: `d3js-D100-U75-P85-A60-<sha>`
+2. Create new tags: `d3js/D100-U75-P85-A60-<sha>`
 3. Keep old tags for reference but use new format going forward
 
 # Important: d3.js Only
 
-This evolution process works ONLY with d3.js implementations. All tags must use the "d3js-" prefix. When selecting parents or evaluating mutations:
-- **ONLY** consider tags starting with "d3js-"
+This evolution process works ONLY with d3.js implementations. All tags must use the "d3js/" prefix. When selecting parents or evaluating mutations:
+- **ONLY** consider tags starting with "d3js/"
 - **IGNORE** all vis.js tags (those without the prefix)
 - All mutations must modify `static/d3-gantt.js` or related d3.js code
 

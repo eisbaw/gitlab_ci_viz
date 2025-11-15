@@ -23,11 +23,11 @@ To evaluate kill prior server running, if any, on port 8000. Then spin up via `n
 Save the screenshot under `screenshots/<commit-sha>/` folder and commit it to git.
 Read screenshot visually, review it for metrics: Clarity, Density, Clutter - and give a combined score.
 Use a sub-agent to interact with the MCP server. Use another sub-agent to review the screenshot.
-Set a tag on the HEAD commit of name format `d3js-<combined-score>-<commit-sha>`.
-(We include the commit-sha in the tag name to prevent clobbering of same-scores, and "d3js-" prefix to distinguish from vis.js tags).
+Set a tag on the HEAD commit of name format `d3js/<combined-score>-<commit-sha>`.
+(We include the commit-sha in the tag name to prevent clobbering of same-scores, and "d3js/" prefix to distinguish from vis.js tags).
 
 # Step 2: Mutate from prior top-3
-Look at git tags which follow naming of `d3js-<combined-score>-<commit-sha>`. **ONLY consider tags with "d3js-" prefix** - ignore all vis.js tags. Sort by score, then pick randomly among the top-3 highest scoring tags.
+Look at git tags which follow naming of `d3js/<combined-score>-<commit-sha>`. **ONLY consider tags with "d3js/" prefix** - ignore all vis.js tags. Sort by score, then pick randomly among the top-3 highest scoring tags.
 The picked tag, is checked out -- detached HEAD is OK.
 This becomes our new HEAD.
 
