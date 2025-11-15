@@ -310,11 +310,76 @@
         .job-search-input button:hover {
             background-color: #5a6268;
         }
+
+        /* Statistics summary bar */
+        #stats-summary {
+            display: none;
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            color: white;
+        }
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+        .stat-label {
+            font-size: 0.75em;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .stat-success { color: #4ade80; }
+        .stat-failed { color: #f87171; }
+        .stat-duration { color: #fbbf24; }
+        .stat-rate { color: #60a5fa; }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
 <body>
     <h1>GitLab CI GANTT Visualizer</h1>
+    <div id="stats-summary" style="display: none;">
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value stat-success" id="stat-success-count">0</div>
+                <div class="stat-label">Success</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value stat-failed" id="stat-failed-count">0</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value stat-rate" id="stat-success-rate">0%</div>
+                <div class="stat-label">Success Rate</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value stat-duration" id="stat-avg-duration">0m</div>
+                <div class="stat-label">Avg Duration</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-total-pipelines">0</div>
+                <div class="stat-label">Total Pipelines</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="stat-total-jobs">0</div>
+                <div class="stat-label">Total Jobs</div>
+            </div>
+        </div>
+    </div>
     <div id="time-range-label" style="display: none;">
         Activity Window: <span class="time-range">Loading...</span>
     </div>
@@ -700,6 +765,72 @@
             timeline.itemsData.add(allItems);
 
             console.log('Filters applied successfully');
+        }
+
+        /**
+         * Update statistics summary bar with pipeline metrics
+         */
+        function updateStatsSummary(pipelines, jobs) {
+            const statsDiv = document.getElementById('stats-summary');
+
+            // Count by status
+            const statusCounts = {
+                success: 0,
+                failed: 0,
+                running: 0,
+                pending: 0,
+                canceled: 0
+            };
+
+            let totalDuration = 0;
+            let pipelinesWithDuration = 0;
+
+            pipelines.forEach(p => {
+                const status = normalizeStatus(p.status);
+                if (statusCounts.hasOwnProperty(status)) {
+                    statusCounts[status]++;
+                }
+
+                // Calculate duration if both timestamps exist
+                if (p.created_at && p.updated_at) {
+                    const duration = new Date(p.updated_at) - new Date(p.created_at);
+                    if (duration > 0) {
+                        totalDuration += duration;
+                        pipelinesWithDuration++;
+                    }
+                }
+            });
+
+            // Calculate success rate
+            const total = pipelines.length;
+            const successRate = total > 0 ? Math.round((statusCounts.success / total) * 100) : 0;
+
+            // Calculate average duration in minutes
+            const avgDurationMs = pipelinesWithDuration > 0 ? totalDuration / pipelinesWithDuration : 0;
+            const avgDurationMin = Math.round(avgDurationMs / 60000);
+
+            // Format duration nicely
+            let durationStr;
+            if (avgDurationMin < 60) {
+                durationStr = `${avgDurationMin}m`;
+            } else {
+                const hours = Math.floor(avgDurationMin / 60);
+                const mins = avgDurationMin % 60;
+                durationStr = `${hours}h ${mins}m`;
+            }
+
+            // Update DOM
+            document.getElementById('stat-success-count').textContent = statusCounts.success;
+            document.getElementById('stat-failed-count').textContent = statusCounts.failed;
+            document.getElementById('stat-success-rate').textContent = `${successRate}%`;
+            document.getElementById('stat-avg-duration').textContent = durationStr;
+            document.getElementById('stat-total-pipelines').textContent = total;
+            document.getElementById('stat-total-jobs').textContent = jobs.length;
+
+            // Show the stats div
+            statsDiv.style.display = 'block';
+
+            console.log(`Stats updated: ${total} pipelines, ${jobs.length} jobs, ${successRate}% success rate`);
         }
 
         /**
@@ -1101,6 +1232,9 @@
 
                 // Update last update timestamp
                 updateLastUpdateTimestamp(false);
+
+                // Update statistics summary
+                updateStatsSummary(pipelines, jobs);
 
                 // Update time range label (refresh current time)
                 updateTimeRangeLabel();
