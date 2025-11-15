@@ -40,3 +40,15 @@ Thus step 1 and 2 form an evolutionary feedback loop.
 # Help
 If the scores do not increase, it may help to go back to the baseline tag, "baseline".
 
+# Required Visual Design for Maximum Density
+
+The d3.js implementation MUST follow these design principles for maximum information density:
+
+- **Minimal vertical spacing**: Very little separation between pipelines to maximize density
+- **No expandable/collapsible groups**: Do NOT use dropdown or expandable groups
+- **Flat hierarchy**: Jobs rendered as thin lines directly under their pipeline line
+- **Thin lines**: Both pipelines and jobs are thin horizontal lines (not thick bars)
+- **Color coding**: Use colors to indicate status (success, pending, failure, blocked, etc.)
+- **Tooltips**: Show details on hover for both jobs and pipelines
+- **No wasted space**: Eliminate unnecessary padding, margins, and whitespace
+
