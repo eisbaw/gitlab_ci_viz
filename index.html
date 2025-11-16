@@ -306,13 +306,21 @@
             filter: brightness(1.1);
         }
         .gantt-bar:focus {
-            outline: 3px solid #007bff;
-            outline-offset: 2px;
+            outline: 3px solid #0066ff;
+            outline-offset: 3px;
             stroke-width: 3;
-            filter: brightness(1.1);
+            filter: brightness(1.15) drop-shadow(0 0 4px rgba(0, 102, 255, 0.6));
         }
         .gantt-bar:focus:not(:focus-visible) {
             outline: none;
+        }
+        /* Enhanced keyboard focus for all interactive elements */
+        button:focus-visible,
+        input:focus-visible,
+        a:focus-visible {
+            outline: 3px solid #0066ff;
+            outline-offset: 2px;
+            box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.2);
         }
         .gantt-label {
             font-size: 10px;
@@ -329,8 +337,9 @@
             user-select: none;
         }
         .gantt-expand-icon:focus {
-            outline: 2px solid #007bff;
-            outline-offset: 2px;
+            outline: 3px solid #0066ff;
+            outline-offset: 3px;
+            filter: drop-shadow(0 0 4px rgba(0, 102, 255, 0.6));
         }
         .gantt-expand-icon:focus:not(:focus-visible) {
             outline: none;
@@ -351,6 +360,113 @@
             stroke-width: 2;
             stroke-dasharray: 5,5;
         }
+        /* Keyboard shortcuts help panel */
+        #keyboard-help-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+        #keyboard-help-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #keyboard-help-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #keyboard-help-panel h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 1.3em;
+            color: #212529;
+            text-transform: none;
+            letter-spacing: normal;
+        }
+        .keyboard-shortcuts {
+            display: grid;
+            gap: 12px;
+        }
+        .shortcut-row {
+            display: grid;
+            grid-template-columns: 80px 1fr;
+            gap: 12px;
+            align-items: center;
+        }
+        .shortcut-key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 4px;
+            font-family: monospace;
+            font-weight: 600;
+            font-size: 0.9em;
+            box-shadow: 0 2px 0 #dee2e6;
+        }
+        .shortcut-desc {
+            font-size: 0.95em;
+            color: #495057;
+        }
+        .close-help-btn {
+            margin-top: 16px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 500;
+            width: 100%;
+        }
+        .close-help-btn:hover {
+            background: #0056b3;
+        }
+        .close-help-btn:focus {
+            outline: 3px solid rgba(0, 123, 255, 0.4);
+            outline-offset: 2px;
+        }
+        .help-trigger-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #007bff;
+            color: white;
+            border: none;
+            font-size: 1.5em;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            transition: all 0.2s ease;
+        }
+        .help-trigger-btn:hover {
+            background: #0056b3;
+            transform: scale(1.05);
+        }
+        .help-trigger-btn:focus {
+            outline: 3px solid rgba(0, 123, 255, 0.4);
+            outline-offset: 3px;
+        }
+
         .gantt-tooltip {
             position: absolute;
             padding: 8px;
@@ -466,6 +582,41 @@
         <section id="visualization" aria-label="Pipeline timeline visualization"></section>
         <div class="gantt-tooltip" id="tooltip" role="tooltip" aria-live="polite"></div>
     </main>
+
+    <!-- Keyboard shortcuts help button -->
+    <button class="help-trigger-btn" id="help-trigger" aria-label="Show keyboard shortcuts (press ?)">
+        ?
+    </button>
+
+    <!-- Keyboard shortcuts help overlay -->
+    <div id="keyboard-help-overlay" role="dialog" aria-labelledby="help-title" aria-modal="true">
+        <div id="keyboard-help-panel">
+            <h2 id="help-title">Keyboard Shortcuts</h2>
+            <div class="keyboard-shortcuts">
+                <div class="shortcut-row">
+                    <span class="shortcut-key">?</span>
+                    <span class="shortcut-desc">Show/hide this help panel</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">Tab</span>
+                    <span class="shortcut-desc">Navigate between pipelines and jobs</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">Enter</span>
+                    <span class="shortcut-desc">Open selected pipeline/job in GitLab</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">Space</span>
+                    <span class="shortcut-desc">Toggle pipeline expansion / Open job</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">Esc</span>
+                    <span class="shortcut-desc">Close this help panel</span>
+                </div>
+            </div>
+            <button class="close-help-btn" id="close-help">Close</button>
+        </div>
+    </div>
 
     <script src="/static/logger.js"></script>
     <script src="/static/error-formatter.js"></script>
@@ -821,6 +972,61 @@
         }
 
         /**
+         * Initialize keyboard shortcuts help panel
+         */
+        function initializeKeyboardHelp() {
+            const overlay = document.getElementById('keyboard-help-overlay');
+            const trigger = document.getElementById('help-trigger');
+            const closeBtn = document.getElementById('close-help');
+
+            function showHelp() {
+                overlay.classList.add('show');
+                closeBtn.focus();
+            }
+
+            function hideHelp() {
+                overlay.classList.remove('show');
+                trigger.focus();
+            }
+
+            // Button click handler
+            trigger.addEventListener('click', showHelp);
+            closeBtn.addEventListener('click', hideHelp);
+
+            // Keyboard handlers
+            document.addEventListener('keydown', (e) => {
+                // Show/hide help with '?'
+                if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    // Don't trigger if user is typing in an input field
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                        return;
+                    }
+                    e.preventDefault();
+                    if (overlay.classList.contains('show')) {
+                        hideHelp();
+                    } else {
+                        showHelp();
+                    }
+                }
+
+                // Close help with Escape
+                if (e.key === 'Escape' && overlay.classList.contains('show')) {
+                    e.preventDefault();
+                    hideHelp();
+                }
+            });
+
+            // Close when clicking overlay background
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    hideHelp();
+                }
+            });
+
+            console.log('Keyboard shortcuts help initialized');
+        }
+
+        /**
          * Initialize on DOM load
          */
         document.addEventListener('DOMContentLoaded', function() {
@@ -852,6 +1058,9 @@
 
             // Initialize filter controls
             initializeFilterControls();
+
+            // Initialize keyboard shortcuts help
+            initializeKeyboardHelp();
 
             // Fetch and render data
             fetchAndRender();
