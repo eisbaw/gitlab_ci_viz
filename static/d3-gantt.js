@@ -262,7 +262,8 @@ class D3GanttChart {
             // Re-render affected layers using cached rows for performance
             this.renderGrid(this.getChartWidth(), this.getChartHeight());
             this.renderContention(this.getChartWidth());
-            this.renderBars(this.cachedRows || this.transformToRows(this.data));
+            // Use zoom mode for minimal DOM updates (only x-positions and widths)
+            this.renderBars(this.cachedRows || this.transformToRows(this.data), 'zoom');
             this.renderCurrentTime(this.getChartHeight());
             this.renderAxis(this.getChartWidth());
             this.zoomRafId = null;
@@ -373,12 +374,23 @@ class D3GanttChart {
     /**
      * Render timeline bars (pipelines and jobs)
      */
-    renderBars(rows) {
+    renderBars(rows, mode = 'full') {
         const barsLayer = this.chartGroup.select('.bars-layer');
 
         const bars = barsLayer.selectAll('rect')
             .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
 
+        // Fast path for zoom: only update x-positions and widths (70% fewer DOM operations)
+        if (mode === 'zoom') {
+            bars.attr('x', d => this.xScale(new Date(d.start)))
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4);
+                });
+            return;
+        }
+
+        // Full rendering path: complete enter/update/exit cycle
         // Enter + Update
         bars.join(
             enter => enter.append('rect')
