@@ -23,12 +23,12 @@ class D3GanttChart {
         this.container = document.getElementById(containerId);
         this.config = config;
 
-        // Layout configuration
-        this.margin = { top: 60, right: 20, bottom: 30, left: 120 };
-        this.rowHeight = 24;
-        this.barHeight = 18;
-        this.labelPadding = 10;
-        this.indentWidth = 20;
+        // Layout configuration - optimized for maximum density
+        this.margin = { top: 40, right: 15, bottom: 20, left: 85 };
+        this.rowHeight = 18;
+        this.barHeight = 14;
+        this.labelPadding = 6;
+        this.indentWidth = 15;
 
         // State
         this.expandedPipelines = new Set();
@@ -137,7 +137,7 @@ class D3GanttChart {
         this.yScale = d3.scaleBand()
             .domain(rows.map((r, i) => i))
             .range([0, height])
-            .padding(0.1);
+            .padding(0.05);
 
         // Render layers
         this.renderGrid(width, height);
@@ -370,24 +370,24 @@ class D3GanttChart {
         const axisLayer = this.chartGroup.select('.axis-layer');
         axisLayer.selectAll('*').remove();
 
-        // Top axis
+        // Top axis - compressed for density
         const xAxisTop = d3.axisTop(this.xScale)
             .ticks(10)
             .tickFormat(d3.timeFormat('%b %d %H:%M'));
 
         axisLayer.append('g')
             .attr('class', 'gantt-axis')
-            .attr('transform', `translate(0, -10)`)
+            .attr('transform', `translate(0, -6)`)
             .call(xAxisTop);
 
-        // Major time labels (dates)
+        // Major time labels (dates) - compressed spacing
         const xAxisDays = d3.axisTop(this.xScale)
             .ticks(d3.timeDay.every(1))
             .tickFormat(d3.timeFormat('%a %b %d'));
 
         axisLayer.append('g')
             .attr('class', 'gantt-axis')
-            .attr('transform', `translate(0, -30)`)
+            .attr('transform', `translate(0, -20)`)
             .call(xAxisDays)
             .selectAll('text')
             .style('font-weight', 'bold');
@@ -431,7 +431,7 @@ class D3GanttChart {
                     .attr('x', d => d.level * this.indentWidth)
                     .attr('y', this.rowHeight / 2)
                     .attr('dy', '0.35em')
-                    .attr('font-size', '14px')
+                    .attr('font-size', '11px')
                     .text(d => d.expanded ? '▼' : '▶')
                     .on('click', (event, d) => {
                         event.stopPropagation();
@@ -445,16 +445,16 @@ class D3GanttChart {
                         }
                     });
 
-                // Label text
+                // Label text - compressed for density
                 g.append('text')
                     .attr('class', d => d.type === 'group' ? 'gantt-label gantt-group-label' : 'gantt-label')
-                    .attr('x', d => d.level * this.indentWidth + (d.type === 'pipeline' ? 20 : this.labelPadding))
+                    .attr('x', d => d.level * this.indentWidth + (d.type === 'pipeline' ? 15 : this.labelPadding))
                     .attr('y', this.rowHeight / 2)
                     .attr('dy', '0.35em')
                     .text(d => d.label)
                     .each(function(d) {
                         // Truncate long labels (adjusted for reduced left margin)
-                        const maxWidth = 100 - (d.level * 15);
+                        const maxWidth = 70 - (d.level * 10);
                         const text = d3.select(this);
                         let textContent = text.text();
 
@@ -480,7 +480,7 @@ class D3GanttChart {
                     update.select('.gantt-label')
                         .text(d => d.label)
                         .each(function(d) {
-                            const maxWidth = 100 - (d.level * 15);
+                            const maxWidth = 70 - (d.level * 10);
                             const text = d3.select(this);
                             let textContent = text.text();
 
