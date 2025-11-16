@@ -148,6 +148,48 @@
             border: 1px solid #dee2e6;
             border-radius: 3px;
         }
+        #zoom-controls {
+            margin-bottom: 4px;
+            padding: 6px 8px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #zoom-controls h2 {
+            margin: 0;
+            margin-right: 8px;
+        }
+        .zoom-button {
+            padding: 4px 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.85em;
+            font-weight: 500;
+            transition: background-color 0.2s ease;
+        }
+        .zoom-button:hover {
+            background-color: #0056b3;
+        }
+        .zoom-button:active {
+            background-color: #004085;
+        }
+        .zoom-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .zoom-info {
+            margin-left: auto;
+            font-size: 0.8em;
+            color: #6c757d;
+            font-style: italic;
+        }
         .filter-checkboxes {
             display: flex;
             flex-wrap: wrap;
@@ -593,6 +635,13 @@
             <div class="status-badges" id="status-badges-container"></div>
             <div class="project-badges" id="project-badges-container"></div>
         </section>
+        <nav id="zoom-controls" style="display: none;" role="region" aria-labelledby="zoom-heading">
+            <h2 id="zoom-heading">Timeline Navigation</h2>
+            <button class="zoom-button" id="zoom-in" aria-label="Zoom in on timeline">Zoom In (+)</button>
+            <button class="zoom-button" id="zoom-out" aria-label="Zoom out on timeline">Zoom Out (-)</button>
+            <button class="zoom-button" id="zoom-reset" aria-label="Reset zoom to default view">Reset View</button>
+            <span class="zoom-info">Scroll to zoom, drag to pan</span>
+        </nav>
         <nav id="filter-controls" style="display: none;" role="region" aria-labelledby="filter-heading">
             <h2 id="filter-heading">Filter by Pipeline Status</h2>
             <div class="filter-checkboxes" role="group" aria-label="Pipeline status filters">
@@ -661,6 +710,18 @@
                 <div class="shortcut-row">
                     <span class="shortcut-key">Space</span>
                     <span class="shortcut-desc">Toggle pipeline expansion / Open job</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">+</span>
+                    <span class="shortcut-desc">Zoom in on timeline</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">-</span>
+                    <span class="shortcut-desc">Zoom out on timeline</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">0</span>
+                    <span class="shortcut-desc">Reset zoom to default view</span>
                 </div>
                 <div class="shortcut-row">
                     <span class="shortcut-key">Esc</span>
@@ -808,6 +869,73 @@
                     announcer.textContent = message;
                 }, 100);
             }
+        }
+
+        /**
+         * Initialize zoom controls event handlers
+         */
+        function initializeZoomControls() {
+            const zoomControls = document.getElementById('zoom-controls');
+            if (!zoomControls) {
+                throw new Error('Critical initialization error: zoom-controls element not found in DOM');
+            }
+
+            zoomControls.style.display = 'flex';
+
+            // Zoom in button
+            document.getElementById('zoom-in').addEventListener('click', () => {
+                if (ganttChart && ganttChart.zoom) {
+                    ganttChart.svg.transition()
+                        .duration(300)
+                        .call(ganttChart.zoom.scaleBy, 1.5);
+                    announceToScreenReader('Zoomed in on timeline', true);
+                }
+            });
+
+            // Zoom out button
+            document.getElementById('zoom-out').addEventListener('click', () => {
+                if (ganttChart && ganttChart.zoom) {
+                    ganttChart.svg.transition()
+                        .duration(300)
+                        .call(ganttChart.zoom.scaleBy, 0.67);
+                    announceToScreenReader('Zoomed out on timeline', true);
+                }
+            });
+
+            // Reset zoom button
+            document.getElementById('zoom-reset').addEventListener('click', () => {
+                if (ganttChart && ganttChart.resetZoom) {
+                    ganttChart.resetZoom();
+                    announceToScreenReader('Zoom reset to default view', true);
+                }
+            });
+
+            // Keyboard shortcuts for zoom
+            document.addEventListener('keydown', (e) => {
+                // Don't trigger if user is typing in an input field
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+
+                // Don't trigger if help panel is open
+                const helpOverlay = document.getElementById('keyboard-help-overlay');
+                if (helpOverlay && helpOverlay.classList.contains('show')) {
+                    return;
+                }
+
+                if (e.key === '+' || e.key === '=') {
+                    e.preventDefault();
+                    document.getElementById('zoom-in').click();
+                } else if (e.key === '-' || e.key === '_') {
+                    e.preventDefault();
+                    document.getElementById('zoom-out').click();
+                } else if (e.key === '0') {
+                    e.preventDefault();
+                    document.getElementById('zoom-reset').click();
+                }
+            });
+
+            console.log('Zoom controls initialized');
         }
 
         /**
@@ -1177,6 +1305,9 @@
 
             // Initialize GANTT chart
             ganttChart = new D3GanttChart('visualization', CONFIG);
+
+            // Initialize zoom controls
+            initializeZoomControls();
 
             // Initialize filter controls
             initializeFilterControls();

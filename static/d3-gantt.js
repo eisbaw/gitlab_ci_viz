@@ -13,6 +13,7 @@
  * - Resource contention visualization
  * - Auto-zoom to data range
  * - Smooth animations
+ * - Zoom and pan controls (mouse wheel, buttons, keyboard shortcuts)
  * - Keyboard accessibility (Tab navigation, Enter/Space activation)
  * - ARIA labels for screen readers
  * - Focus indicators for keyboard users
@@ -38,6 +39,11 @@ class D3GanttChart {
         // D3 scales
         this.xScale = null;
         this.yScale = null;
+
+        // Zoom state
+        this.zoom = null;
+        this.currentTransform = d3.zoomIdentity;
+        this.baseXScale = null; // Store original scale for reset
 
         // SVG elements
         this.svg = null;
@@ -130,14 +136,22 @@ class D3GanttChart {
         timeExtent[1] = new Date(timeExtent[1].getTime() + timePadding);
 
         // Create scales
-        this.xScale = d3.scaleTime()
+        this.baseXScale = d3.scaleTime()
             .domain(timeExtent)
             .range([0, width]);
+
+        // Apply current zoom transform to scale
+        this.xScale = this.currentTransform.rescaleX(this.baseXScale);
 
         this.yScale = d3.scaleBand()
             .domain(rows.map((r, i) => i))
             .range([0, height])
             .padding(0.05);
+
+        // Initialize zoom behavior (only once)
+        if (!this.zoom) {
+            this.initializeZoom(width, height);
+        }
 
         // Render layers
         this.renderGrid(width, height);
@@ -201,6 +215,68 @@ class D3GanttChart {
         }
 
         return rows;
+    }
+
+    /**
+     * Initialize zoom and pan behavior
+     */
+    initializeZoom(width, height) {
+        // Create zoom behavior
+        this.zoom = d3.zoom()
+            .scaleExtent([0.5, 20]) // Allow 2x zoom out to 20x zoom in
+            .translateExtent([[0, 0], [width, height]]) // Limit panning to chart bounds
+            .on('zoom', (event) => this.handleZoom(event));
+
+        // Apply zoom to chart group
+        this.svg.call(this.zoom);
+
+        // Prevent default scrolling on the visualization container
+        this.svg.on('wheel.zoom', (event) => {
+            event.preventDefault();
+        });
+    }
+
+    /**
+     * Handle zoom events
+     */
+    handleZoom(event) {
+        // Store current transform
+        this.currentTransform = event.transform;
+
+        // Update x scale with transform
+        this.xScale = this.currentTransform.rescaleX(this.baseXScale);
+
+        // Re-render affected layers
+        this.renderGrid(this.getChartWidth(), this.getChartHeight());
+        this.renderContention(this.getChartWidth());
+        this.renderBars(this.transformToRows(this.data));
+        this.renderCurrentTime(this.getChartHeight());
+        this.renderAxis(this.getChartWidth());
+    }
+
+    /**
+     * Reset zoom to default view
+     */
+    resetZoom() {
+        this.svg.transition()
+            .duration(750)
+            .call(this.zoom.transform, d3.zoomIdentity);
+    }
+
+    /**
+     * Get current chart width
+     */
+    getChartWidth() {
+        const containerRect = this.container.getBoundingClientRect();
+        return containerRect.width - this.margin.left - this.margin.right;
+    }
+
+    /**
+     * Get current chart height
+     */
+    getChartHeight() {
+        const svgHeight = parseFloat(this.svg.attr('height'));
+        return svgHeight - this.margin.top - this.margin.bottom;
     }
 
     /**
