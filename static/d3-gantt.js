@@ -265,6 +265,37 @@ class D3GanttChart {
             this.renderAxis(this.getChartWidth());
             this.zoomRafId = null;
         });
+
+        // Sync zoom state to URL (debounced)
+        this.syncZoomToURL();
+    }
+
+    /**
+     * Sync zoom/pan state to URL (if URLStateManager available)
+     */
+    syncZoomToURL() {
+        if (typeof URLStateManager !== 'undefined' && typeof FilterState !== 'undefined' && typeof JobSearchState !== 'undefined') {
+            URLStateManager.debouncedSave({
+                filters: FilterState.active,
+                jobSearch: JobSearchState.searchTerm,
+                zoom: this.currentTransform.k,
+                panX: this.currentTransform.x,
+                panY: this.currentTransform.y
+            }, 1000); // Longer delay for zoom to avoid excessive updates
+        }
+    }
+
+    /**
+     * Apply zoom/pan transform from saved state
+     */
+    applyZoomFromState(zoom, panX, panY) {
+        if (zoom !== null && panX !== null && panY !== null && this.zoom && this.svg) {
+            const transform = d3.zoomIdentity
+                .translate(panX, panY)
+                .scale(zoom);
+            this.svg.call(this.zoom.transform, transform);
+            console.log(`Applied zoom from URL: scale=${zoom.toFixed(2)}, pan=(${panX.toFixed(0)}, ${panY.toFixed(0)})`);
+        }
     }
 
     /**

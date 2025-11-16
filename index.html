@@ -693,7 +693,7 @@
     <!-- Keyboard shortcuts help overlay -->
     <div id="keyboard-help-overlay" role="dialog" aria-labelledby="help-title" aria-modal="true">
         <div id="keyboard-help-panel">
-            <h2 id="help-title">Keyboard Shortcuts</h2>
+            <h2 id="help-title">Keyboard Shortcuts & Features</h2>
             <div class="keyboard-shortcuts">
                 <div class="shortcut-row">
                     <span class="shortcut-key">?</span>
@@ -728,6 +728,11 @@
                     <span class="shortcut-desc">Close this help panel</span>
                 </div>
             </div>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #dee2e6;">
+                <p style="font-size: 0.9em; color: #495057; margin: 0 0 8px 0;">
+                    <strong>Share View:</strong> Your current filters, search, and zoom state are saved in the URL. Copy the URL to share this exact view with others.
+                </p>
+            </div>
             <button class="close-help-btn" id="close-help">Close</button>
         </div>
     </div>
@@ -748,6 +753,87 @@
         // Auto-refresh state
         let refreshTimer = null;
 
+        // URL state manager - persists filters and view state to URL
+        const URLStateManager = {
+            /**
+             * Load state from URL query parameters
+             */
+            loadFromURL() {
+                const params = new URLSearchParams(window.location.search);
+
+                // Load filter state
+                const filterParam = params.get('filters');
+                if (filterParam) {
+                    const filters = filterParam.split(',').filter(f => f);
+                    return {
+                        filters: new Set(filters),
+                        jobSearch: params.get('jobSearch') || '',
+                        zoom: parseFloat(params.get('zoom')) || null,
+                        panX: parseFloat(params.get('panX')) || null,
+                        panY: parseFloat(params.get('panY')) || null
+                    };
+                }
+
+                // Default state if no URL params
+                return {
+                    filters: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
+                    jobSearch: '',
+                    zoom: null,
+                    panX: null,
+                    panY: null
+                };
+            },
+
+            /**
+             * Save current state to URL without triggering page reload
+             */
+            saveToURL(state) {
+                const params = new URLSearchParams();
+
+                // Save filters (only if not all default)
+                const filters = Array.from(state.filters).sort();
+                const defaultFilters = ['canceled', 'failed', 'pending', 'running', 'success'];
+                const isDefaultFilters = filters.length === defaultFilters.length &&
+                                        filters.every((f, i) => f === defaultFilters[i]);
+
+                if (!isDefaultFilters && filters.length > 0) {
+                    params.set('filters', filters.join(','));
+                }
+
+                // Save job search
+                if (state.jobSearch) {
+                    params.set('jobSearch', state.jobSearch);
+                }
+
+                // Save zoom/pan state
+                if (state.zoom !== null && state.zoom !== 1) {
+                    params.set('zoom', state.zoom.toFixed(3));
+                }
+                if (state.panX !== null && state.panX !== 0) {
+                    params.set('panX', state.panX.toFixed(2));
+                }
+                if (state.panY !== null && state.panY !== 0) {
+                    params.set('panY', state.panY.toFixed(2));
+                }
+
+                // Update URL without reload
+                const newURL = params.toString()
+                    ? `${window.location.pathname}?${params.toString()}`
+                    : window.location.pathname;
+
+                window.history.replaceState({}, '', newURL);
+            },
+
+            /**
+             * Debounced save to avoid excessive URL updates
+             */
+            _saveTimeout: null,
+            debouncedSave(state, delay = 500) {
+                clearTimeout(this._saveTimeout);
+                this._saveTimeout = setTimeout(() => this.saveToURL(state), delay);
+            }
+        };
+
         // Filter state encapsulation
         const FilterState = {
             active: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
@@ -755,10 +841,12 @@
             reset() {
                 this.active.clear();
                 ['success', 'failed', 'running', 'pending', 'canceled'].forEach(s => this.active.add(s));
+                this._syncToURL();
             },
 
             clear() {
                 this.active.clear();
+                this._syncToURL();
             },
 
             has(status) {
@@ -767,10 +855,26 @@
 
             add(status) {
                 this.active.add(status);
+                this._syncToURL();
             },
 
             delete(status) {
                 this.active.delete(status);
+                this._syncToURL();
+            },
+
+            loadFromURL(filters) {
+                this.active = filters;
+            },
+
+            _syncToURL() {
+                URLStateManager.debouncedSave({
+                    filters: this.active,
+                    jobSearch: JobSearchState.searchTerm,
+                    zoom: ganttChart?.currentTransform?.k || null,
+                    panX: ganttChart?.currentTransform?.x || null,
+                    panY: ganttChart?.currentTransform?.y || null
+                });
             }
         };
 
@@ -783,10 +887,12 @@
                     throw new TypeError(`JobSearchState.set() expects string, got ${typeof term}`);
                 }
                 this.searchTerm = term.toLowerCase().trim();
+                this._syncToURL();
             },
 
             clear() {
                 this.searchTerm = '';
+                this._syncToURL();
             },
 
             isEmpty() {
@@ -802,6 +908,20 @@
                     return false;
                 }
                 return jobName.toLowerCase().includes(this.searchTerm);
+            },
+
+            loadFromURL(searchTerm) {
+                this.searchTerm = searchTerm.toLowerCase().trim();
+            },
+
+            _syncToURL() {
+                URLStateManager.debouncedSave({
+                    filters: FilterState.active,
+                    jobSearch: this.searchTerm,
+                    zoom: ganttChart?.currentTransform?.k || null,
+                    panX: ganttChart?.currentTransform?.x || null,
+                    panY: ganttChart?.currentTransform?.y || null
+                });
             }
         };
 
@@ -951,6 +1071,31 @@
 
             const checkboxes = filterControls.querySelectorAll('input[type="checkbox"]');
 
+            // Load state from URL first
+            const urlState = URLStateManager.loadFromURL();
+            FilterState.loadFromURL(urlState.filters);
+            JobSearchState.loadFromURL(urlState.jobSearch);
+
+            // Update UI to match loaded state
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = FilterState.has(checkbox.value);
+            });
+
+            const jobSearchInput = document.getElementById('job-search-input');
+            if (jobSearchInput && urlState.jobSearch) {
+                jobSearchInput.value = urlState.jobSearch;
+            }
+
+            if (urlState.filters.size !== 5) {
+                console.log('Loaded filters from URL:', Array.from(urlState.filters));
+            }
+            if (urlState.jobSearch) {
+                console.log('Loaded job search from URL:', urlState.jobSearch);
+            }
+            if (urlState.zoom !== null) {
+                console.log('Loaded zoom state from URL:', urlState.zoom);
+            }
+
             checkboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', function() {
                     const status = this.value;
@@ -992,7 +1137,6 @@
                 });
             }
 
-            const jobSearchInput = document.getElementById('job-search-input');
             if (jobSearchInput) {
                 let searchTimeout = null;
                 jobSearchInput.addEventListener('input', function() {
@@ -1023,6 +1167,9 @@
             }
 
             console.log('Filter controls initialized');
+
+            // Return URL state for applying zoom later
+            return urlState;
         }
 
         /**
@@ -1309,14 +1456,21 @@
             // Initialize zoom controls
             initializeZoomControls();
 
-            // Initialize filter controls
-            initializeFilterControls();
+            // Initialize filter controls and get URL state
+            const urlState = initializeFilterControls();
 
             // Initialize keyboard shortcuts help
             initializeKeyboardHelp();
 
             // Fetch and render data
-            fetchAndRender();
+            fetchAndRender().then(() => {
+                // Apply saved zoom state after initial render (if any)
+                if (urlState.zoom !== null && urlState.panX !== null && urlState.panY !== null) {
+                    setTimeout(() => {
+                        ganttChart.applyZoomFromState(urlState.zoom, urlState.panX, urlState.panY);
+                    }, 100);
+                }
+            });
 
             // Schedule auto-refresh if enabled
             scheduleAutoRefresh();
