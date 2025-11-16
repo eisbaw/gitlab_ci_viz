@@ -35,6 +35,7 @@ class D3GanttChart {
         this.expandedPipelines = new Set();
         this.data = [];
         this.contentionPeriods = [];
+        this.cachedRows = null; // Cache transformed rows for zoom/pan performance
 
         // D3 scales
         this.xScale = null;
@@ -108,6 +109,7 @@ class D3GanttChart {
 
         // Transform data to flat row structure
         const rows = this.transformToRows(domainModel);
+        this.cachedRows = rows; // Cache for zoom/pan performance
         console.log('D3 GANTT: Generated', rows.length, 'rows');
 
         if (rows.length === 0) {
@@ -257,10 +259,10 @@ class D3GanttChart {
         }
 
         this.zoomRafId = requestAnimationFrame(() => {
-            // Re-render affected layers
+            // Re-render affected layers using cached rows for performance
             this.renderGrid(this.getChartWidth(), this.getChartHeight());
             this.renderContention(this.getChartWidth());
-            this.renderBars(this.transformToRows(this.data));
+            this.renderBars(this.cachedRows || this.transformToRows(this.data));
             this.renderCurrentTime(this.getChartHeight());
             this.renderAxis(this.getChartWidth());
             this.zoomRafId = null;
@@ -644,6 +646,9 @@ class D3GanttChart {
                 ? `Pipeline ${pipelineId} collapsed`
                 : `Pipeline ${pipelineId} expanded`
         );
+
+        // Invalidate cache before re-render (structure changed)
+        this.cachedRows = null;
 
         // Re-render with new state
         this.render(this.data, this.contentionPeriods);
