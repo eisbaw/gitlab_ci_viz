@@ -497,14 +497,36 @@ class D3GanttChart {
      * Toggle pipeline expand/collapse
      */
     togglePipeline(pipelineId) {
-        if (this.expandedPipelines.has(pipelineId)) {
+        const wasExpanded = this.expandedPipelines.has(pipelineId);
+
+        if (wasExpanded) {
             this.expandedPipelines.delete(pipelineId);
         } else {
             this.expandedPipelines.add(pipelineId);
         }
 
+        // Announce to screen readers
+        this.announceAction(
+            wasExpanded
+                ? `Pipeline ${pipelineId} collapsed`
+                : `Pipeline ${pipelineId} expanded`
+        );
+
         // Re-render with new state
         this.render(this.data, this.contentionPeriods);
+    }
+
+    /**
+     * Announce action to screen readers
+     */
+    announceAction(message) {
+        const announcer = document.getElementById('sr-action-announcer');
+        if (announcer) {
+            announcer.textContent = '';
+            setTimeout(() => {
+                announcer.textContent = message;
+            }, 100);
+        }
     }
 
     /**
