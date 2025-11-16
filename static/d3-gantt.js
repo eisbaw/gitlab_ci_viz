@@ -50,6 +50,11 @@ class D3GanttChart {
         this.chartGroup = null;
         this.tooltip = d3.select('#tooltip');
 
+        // Performance optimizations
+        this.zoomRafId = null; // For debouncing zoom re-renders
+        this.textMeasureCache = new Map(); // Cache for text width measurements
+        this.canvasContext = null; // For fast text measurements
+
         this.initializeSVG();
     }
 
@@ -237,7 +242,7 @@ class D3GanttChart {
     }
 
     /**
-     * Handle zoom events
+     * Handle zoom events (debounced with requestAnimationFrame for performance)
      */
     handleZoom(event) {
         // Store current transform
@@ -246,21 +251,27 @@ class D3GanttChart {
         // Update x scale with transform
         this.xScale = this.currentTransform.rescaleX(this.baseXScale);
 
-        // Re-render affected layers
-        this.renderGrid(this.getChartWidth(), this.getChartHeight());
-        this.renderContention(this.getChartWidth());
-        this.renderBars(this.transformToRows(this.data));
-        this.renderCurrentTime(this.getChartHeight());
-        this.renderAxis(this.getChartWidth());
+        // Debounce re-renders using requestAnimationFrame
+        if (this.zoomRafId) {
+            cancelAnimationFrame(this.zoomRafId);
+        }
+
+        this.zoomRafId = requestAnimationFrame(() => {
+            // Re-render affected layers
+            this.renderGrid(this.getChartWidth(), this.getChartHeight());
+            this.renderContention(this.getChartWidth());
+            this.renderBars(this.transformToRows(this.data));
+            this.renderCurrentTime(this.getChartHeight());
+            this.renderAxis(this.getChartWidth());
+            this.zoomRafId = null;
+        });
     }
 
     /**
-     * Reset zoom to default view
+     * Reset zoom to default view (instant for better performance)
      */
     resetZoom() {
-        this.svg.transition()
-            .duration(750)
-            .call(this.zoom.transform, d3.zoomIdentity);
+        this.svg.call(this.zoom.transform, d3.zoomIdentity);
     }
 
     /**
@@ -356,27 +367,21 @@ class D3GanttChart {
                 .on('mouseleave', () => this.hideTooltip())
                 .on('focus', (event, d) => this.handleBarFocus(event, d))
                 .on('blur', () => this.hideTooltip())
-                .call(enter => enter.transition()
-                    .duration(500)
-                    .attr('width', d => {
-                        const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
-                        return Math.max(w, 4); // Minimum 4px width
-                    })
-                ),
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4); // Minimum 4px width
+                }),
             update => update
                 .attr('aria-label', d => this.getBarAriaLabel(d))
-                .call(update => update.transition()
-                    .duration(300)
-                    .attr('x', d => this.xScale(new Date(d.start)))
-                    .attr('y', (d, i) => {
-                        const rowIndex = rows.indexOf(d);
-                        return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
-                    })
-                    .attr('width', d => {
-                        const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
-                        return Math.max(w, 4);
-                    })
-                )
+                .attr('x', d => this.xScale(new Date(d.start)))
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
+                })
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4);
+                })
         );
     }
 
@@ -470,6 +475,45 @@ class D3GanttChart {
     }
 
     /**
+     * Get or create canvas context for fast text measurement
+     */
+    getTextMeasureContext() {
+        if (!this.canvasContext) {
+            const canvas = document.createElement('canvas');
+            this.canvasContext = canvas.getContext('2d');
+            // Match the font used in CSS for .gantt-label
+            this.canvasContext.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        }
+        return this.canvasContext;
+    }
+
+    /**
+     * Measure text width using cached canvas context (much faster than DOM)
+     */
+    measureTextWidth(text) {
+        const cacheKey = text;
+        if (this.textMeasureCache.has(cacheKey)) {
+            return this.textMeasureCache.get(cacheKey);
+        }
+
+        const ctx = this.getTextMeasureContext();
+        const width = ctx.measureText(text).width;
+        this.textMeasureCache.set(cacheKey, width);
+        return width;
+    }
+
+    /**
+     * Truncate text to fit within maxWidth (using fast canvas measurement)
+     */
+    truncateText(text, maxWidth) {
+        let textContent = text;
+        while (this.measureTextWidth(textContent) > maxWidth && textContent.length > 0) {
+            textContent = textContent.slice(0, -1);
+        }
+        return textContent.length < text.length ? textContent + '...' : textContent;
+    }
+
+    /**
      * Render row labels (projects, pipelines, jobs)
      */
     renderLabels(rows) {
@@ -521,32 +565,21 @@ class D3GanttChart {
                         }
                     });
 
-                // Label text - compressed for density
+                // Label text - using cached measurements for performance
                 g.append('text')
                     .attr('class', d => d.type === 'group' ? 'gantt-label gantt-group-label' : 'gantt-label')
                     .attr('x', d => d.level * this.indentWidth + (d.type === 'pipeline' ? 15 : this.labelPadding))
                     .attr('y', this.rowHeight / 2)
                     .attr('dy', '0.35em')
-                    .text(d => d.label)
-                    .each(function(d) {
-                        // Truncate long labels (adjusted for reduced left margin)
+                    .text(d => {
                         const maxWidth = 70 - (d.level * 10);
-                        const text = d3.select(this);
-                        let textContent = text.text();
-
-                        while (this.getComputedTextLength() > maxWidth && textContent.length > 0) {
-                            textContent = textContent.slice(0, -1);
-                            text.text(textContent + '...');
-                        }
+                        return this.truncateText(d.label, maxWidth);
                     });
 
                 return g;
             },
             update => update
-                .call(update => update.transition()
-                    .duration(300)
-                    .attr('transform', (d, i) => `translate(0, ${this.yScale(i)})`)
-                )
+                .attr('transform', (d, i) => `translate(0, ${this.yScale(i)})`)
                 .call(update => {
                     update.select('.gantt-expand-icon')
                         .attr('aria-label', d => `${d.expanded ? 'Collapse' : 'Expand'} pipeline ${d.pipeline.id}`)
@@ -554,16 +587,9 @@ class D3GanttChart {
                         .text(d => d.expanded ? '▼' : '▶');
 
                     update.select('.gantt-label')
-                        .text(d => d.label)
-                        .each(function(d) {
+                        .text(d => {
                             const maxWidth = 70 - (d.level * 10);
-                            const text = d3.select(this);
-                            let textContent = text.text();
-
-                            while (this.getComputedTextLength() > maxWidth && textContent.length > 0) {
-                                textContent = textContent.slice(0, -1);
-                                text.text(textContent + '...');
-                            }
+                            return this.truncateText(d.label, maxWidth);
                         });
                 })
         );
