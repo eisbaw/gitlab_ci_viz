@@ -300,7 +300,8 @@ class Job {
     /**
      * Get effective start time for timeline
      * - Started jobs: use startedAt
-     * - Pending jobs: use current time (positioned at "Now" line)
+     * - Pending jobs (waiting for runners): use current time (positioned at "Now" line)
+     * - Skipped/Manual jobs: use createdAt (positioned at pipeline time)
      * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
@@ -309,14 +310,22 @@ class Job {
             return this.startedAt;
         }
 
-        // Pending jobs: position at current time (to the right of "Now" line)
+        // Skipped and manual jobs: use creation time (part of pipeline execution)
+        if (this.status === 'skipped' || this.status === 'manual') {
+            return this.createdAt;
+        }
+
+        // Pending jobs (created, pending, waiting_for_resource, preparing):
+        // position at current time (to the right of "Now" line)
         return new Date().toISOString();
     }
 
     /**
      * Get effective end time for timeline
-     * For running jobs, uses current time
-     * For pending jobs, uses now + small offset for visibility
+     * - Finished jobs: use finishedAt
+     * - Running jobs: use current time
+     * - Pending jobs: use now + small offset for visibility
+     * - Skipped/Manual jobs: use createdAt + small offset
      *
      * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
      * since jobs are typically smaller units that start quickly. This helps
@@ -331,6 +340,13 @@ class Job {
         // Running job: show until now
         if (this.startedAt) {
             return new Date().toISOString();
+        }
+
+        // Skipped and manual jobs: show small bar at pipeline time
+        if (this.status === 'skipped' || this.status === 'manual') {
+            const created = new Date(this.createdAt);
+            const VISIBILITY_MS = 2 * 60 * 1000;
+            return new Date(created.getTime() + VISIBILITY_MS).toISOString();
         }
 
         // Pending job: show small bar to the right of "Now" (2 minutes)
