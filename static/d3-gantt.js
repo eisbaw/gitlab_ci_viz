@@ -1468,6 +1468,20 @@ class D3GanttChart {
             parts.push(`⊘ Skipped (conditions not met)`);
         }
 
+        // Add runner information if available
+        if (job.runner) {
+            if (job.runner.description) {
+                parts.push(`Runner: ${job.runner.description}`);
+            } else if (job.runner.name) {
+                parts.push(`Runner: ${job.runner.name}`);
+            }
+
+            // Add runner ID for reference
+            if (job.runner.id) {
+                parts.push(`Runner ID: ${job.runner.id}`);
+            }
+        }
+
         if (job.startedAt) {
             parts.push(`Started: ${this.formatRelativeTime(job.startedAt)}`);
         } else {

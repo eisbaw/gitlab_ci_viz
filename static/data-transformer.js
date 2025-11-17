@@ -254,8 +254,9 @@ class Job {
      * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
      * @param {Object|null} user - User who triggered the job (optional, for manual jobs)
      * @param {boolean} allowFailure - Whether job is allowed to fail without failing pipeline
+     * @param {Object|null} runner - Runner information (optional)
      */
-    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectPathWithNamespace = null, user = null, allowFailure = false) {
+    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectPathWithNamespace = null, user = null, allowFailure = false, runner = null) {
         // Validate required fields
         if (!id || !name || !status || !createdAt || !pipelineId) {
             throw new Error(`Invalid job data: missing required fields (id=${id}, name=${name}, status=${status}, createdAt=${createdAt}, pipelineId=${pipelineId})`);
@@ -285,6 +286,7 @@ class Job {
         this.projectPathWithNamespace = projectPathWithNamespace;
         this.user = user;
         this.allowFailure = allowFailure;
+        this.runner = runner;
     }
 
     /**
@@ -466,7 +468,8 @@ class DataTransformer {
                 pipelineId,
                 pipeline.projectPathWithNamespace,
                 apiJob.user || null,
-                apiJob.allow_failure || false
+                apiJob.allow_failure || false,
+                apiJob.runner || null
             );
 
             // Add to pipeline
