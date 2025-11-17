@@ -252,7 +252,7 @@
         }
 
         .progress-bar.countdown {
-            background: linear-gradient(90deg, #28a745 0%, #1e7e34 100%);
+            display: none; /* Hide progress bar during countdown */
         }
 
         .progress-bar.error {
@@ -956,6 +956,7 @@
                     <div class="data-fetch-message" id="data-fetch-message">Ready to load data</div>
                     <div class="data-fetch-details" id="data-fetch-details"></div>
                 </div>
+                <button id="refresh-button" class="zoom-button" aria-label="Manually refresh data now" style="margin-top: 6px;">Refresh Now</button>
             </section>
 
             <nav id="filter-controls" class="control-section" style="display: none;" role="region" aria-labelledby="filter-heading">
@@ -1595,6 +1596,25 @@
 
             dataFetchControls.style.display = 'block';
             updateDataFetchInfo('Ready to load data', '', 0, false);
+
+            // Add event handler for manual refresh button
+            const refreshButton = document.getElementById('refresh-button');
+            if (refreshButton) {
+                refreshButton.addEventListener('click', async function() {
+                    // Disable button during fetch
+                    refreshButton.disabled = true;
+                    announceToScreenReader('Manual refresh triggered', true);
+                    console.log('Manual refresh triggered by user');
+
+                    try {
+                        await fetchAndRender(true);
+                    } finally {
+                        // Re-enable button after fetch completes
+                        refreshButton.disabled = false;
+                    }
+                });
+            }
+
             console.log('Data fetch controls initialized');
         }
 
@@ -1686,14 +1706,11 @@
             const secs = seconds % 60;
             const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 
-            // Show countdown as reverse progress (100% -> 0%)
-            const totalSeconds = CONFIG.refreshInterval || 60;
-            const progress = (seconds / totalSeconds) * 100;
-
+            // Show countdown text without progress bar
             updateDataFetchInfo(
                 'Data loaded',
                 `Next refresh in ${timeStr}`,
-                progress,
+                0, // No progress bar during countdown
                 true
             );
         }
