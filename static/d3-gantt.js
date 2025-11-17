@@ -1470,10 +1470,20 @@ class D3GanttChart {
 
         // Add runner information if available
         if (job.runner) {
+            let runnerLabel = '';
+
             if (job.runner.description) {
-                parts.push(`Runner: ${job.runner.description}`);
+                // Take substring up to first space, remove trailing punctuation
+                const firstWord = job.runner.description.split(' ')[0];
+                runnerLabel = firstWord.replace(/[,;:.!?]+$/, '');
             } else if (job.runner.name) {
-                parts.push(`Runner: ${job.runner.name}`);
+                // Take substring up to first space, remove trailing punctuation
+                const firstWord = job.runner.name.split(' ')[0];
+                runnerLabel = firstWord.replace(/[,;:.!?]+$/, '');
+            }
+
+            if (runnerLabel) {
+                parts.push(`Runner: ${runnerLabel}`);
             }
 
             // Add runner ID for reference
