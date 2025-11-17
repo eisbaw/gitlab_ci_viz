@@ -128,6 +128,21 @@ class D3GanttChart {
         this.data = domainModel;
         this.contentionPeriods = contentionPeriods;
 
+        // Auto-expand first 4 pipelines on initial render (based on display order)
+        if (this.expandedPipelines.size === 0) {
+            // Transform to get pipelines in display order (newest first)
+            const tempRows = this.transformToRows(domainModel);
+            const pipelineRows = tempRows.filter(r => r.type === 'pipeline');
+
+            // Expand first 4 pipelines in display order
+            pipelineRows.slice(0, 4).forEach(row => {
+                if (row.pipeline) {
+                    this.expandedPipelines.add(row.pipeline.id);
+                }
+            });
+            console.log('D3 GANTT: Auto-expanded first 4 pipelines:', Array.from(this.expandedPipelines));
+        }
+
         // Transform data to flat row structure
         const rows = this.transformToRows(domainModel);
         this.cachedRows = rows; // Cache for zoom/pan performance
