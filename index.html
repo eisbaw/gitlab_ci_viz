@@ -227,6 +227,21 @@
             margin: 0;
         }
 
+        .data-fetch-content {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .data-fetch-content-left {
+            flex-shrink: 0;
+        }
+
+        .data-fetch-content-right {
+            flex-grow: 1;
+            min-width: 0;
+        }
+
         .data-fetch-info {
             font-size: 0.75em;
             color: #6c757d;
@@ -949,14 +964,20 @@
 
             <section id="data-fetch-controls" class="control-section" style="display: none;" role="region" aria-labelledby="data-fetch-heading">
                 <h2 id="data-fetch-heading">Data Status</h2>
-                <div class="progress-bar-container" id="progress-container" style="display: none;">
-                    <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
+                <div class="data-fetch-content">
+                    <div class="data-fetch-content-left">
+                        <button id="refresh-button" class="zoom-button" aria-label="Manually refresh data now">Refresh Now</button>
+                    </div>
+                    <div class="data-fetch-content-right">
+                        <div class="progress-bar-container" id="progress-container" style="display: none;">
+                            <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
+                        </div>
+                        <div class="data-fetch-status" id="data-fetch-status">
+                            <div class="data-fetch-message" id="data-fetch-message">Ready to load data</div>
+                            <div class="data-fetch-details" id="data-fetch-details"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="data-fetch-status" id="data-fetch-status">
-                    <div class="data-fetch-message" id="data-fetch-message">Ready to load data</div>
-                    <div class="data-fetch-details" id="data-fetch-details"></div>
-                </div>
-                <button id="refresh-button" class="zoom-button" aria-label="Manually refresh data now" style="margin-top: 6px;">Refresh Now</button>
             </section>
 
             <nav id="filter-controls" class="control-section" style="display: none;" role="region" aria-labelledby="filter-heading">
