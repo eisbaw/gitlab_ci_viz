@@ -501,6 +501,41 @@ class D3GanttChart {
     }
 
     /**
+     * Get outline color for jobs based on status and allow_failure flag
+     * - Green: success
+     * - Red: failed (and not allowed to fail)
+     * - Yellow: failed but allowed to fail
+     * - Project color: other statuses or pipelines
+     */
+    getJobOutlineColor(d) {
+        // Only apply colored outlines to jobs, not pipelines
+        if (d.type !== 'job') {
+            const colors = this.getProjectColor(d.projectName);
+            return colors.stroke;
+        }
+
+        // Unexecuted jobs (manual/skipped) get grey
+        if (this.isUnexecutedJob(d)) {
+            return '#757575';
+        }
+
+        // Success jobs get green outline
+        if (d.status === 'success') {
+            return '#28a745';  // Green
+        }
+
+        // Failed jobs
+        if (d.status === 'failed') {
+            // Yellow if allowed to fail, red otherwise
+            return d.job?.allowFailure ? '#ffc107' : '#dc3545';  // Yellow or Red
+        }
+
+        // Default: use project color for other statuses
+        const colors = this.getProjectColor(d.projectName);
+        return colors.stroke;
+    }
+
+    /**
      * Render background boxes for expanded pipelines
      */
     renderPipelineBackgrounds(rows) {
@@ -675,13 +710,7 @@ class D3GanttChart {
                     return colors.fill;
                 })
                 .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
-                .attr('stroke', d => {
-                    if (this.isUnexecutedJob(d)) {
-                        return '#757575';  // Darker grey border for unexecuted jobs
-                    }
-                    const colors = this.getProjectColor(d.projectName);
-                    return colors.stroke;
-                })
+                .attr('stroke', d => this.getJobOutlineColor(d))
                 .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);
@@ -722,13 +751,7 @@ class D3GanttChart {
                     return colors.fill;
                 })
                 .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
-                .attr('stroke', d => {
-                    if (this.isUnexecutedJob(d)) {
-                        return '#757575';  // Darker grey border for unexecuted jobs
-                    }
-                    const colors = this.getProjectColor(d.projectName);
-                    return colors.stroke;
-                })
+                .attr('stroke', d => this.getJobOutlineColor(d))
                 .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);

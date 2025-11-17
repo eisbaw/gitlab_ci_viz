@@ -1105,6 +1105,30 @@
                 <div class="legend-project-note">Manual jobs require trigger; skipped jobs had unmet conditions</div>
             </div>
 
+            <!-- Job Outcome Colors -->
+            <div class="legend-section">
+                <div class="legend-section-title">Job Outcome (Outline)</div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#28a745" stroke-width="3" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Success (green)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#dc3545" stroke-width="3" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Failed (red)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#ffc107" stroke-width="3" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Failed (allowed, yellow)</span>
+                </div>
+                <div class="legend-project-note">Jobs show outcome via outline color; allowed failures don't fail pipeline</div>
+            </div>
+
             <!-- Project Colors -->
             <div class="legend-section">
                 <div class="legend-section-title">Project Colors</div>
