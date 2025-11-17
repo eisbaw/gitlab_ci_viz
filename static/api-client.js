@@ -62,6 +62,99 @@ class GitLabAPIClient {
     }
 
     /**
+     * Make GraphQL query to GitLab API
+     *
+     * @param {string} query - GraphQL query string
+     * @param {object} variables - GraphQL variables object
+     * @param {number} timeout - Request timeout in milliseconds (default: 30000)
+     * @returns {Promise<object>} - GraphQL response data
+     * @throws {Error} - With user-friendly error message
+     */
+    async graphqlQuery(query, variables = {}, timeout = 30000) {
+        const url = `${this.gitlabUrl}/api/graphql`;
+
+        // Log request start with timing
+        const startTime = performance.now();
+        if (window.logger) {
+            window.logger.debug(`GraphQL query: ${query.substring(0, 50)}...`);
+        }
+
+        // Prepare GraphQL request body
+        const body = JSON.stringify({
+            query: query,
+            variables: variables
+        });
+
+        // Add authentication header
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.gitlabToken}`
+        };
+
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(this._createError(
+                    'TimeoutError',
+                    `GraphQL request timed out after ${timeout / 1000} seconds. GitLab may be slow or unreachable.`
+                ));
+            }, timeout);
+        });
+
+        try {
+            const fetchPromise = fetch(url, {
+                method: 'POST',
+                headers,
+                body
+            });
+
+            // Race between fetch and timeout
+            const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+            // Handle HTTP errors
+            if (!response.ok) {
+                await this._handleErrorResponse(response);
+            }
+
+            const result = await response.json();
+
+            // GraphQL can return 200 OK but still have errors in the response
+            if (result.errors && result.errors.length > 0) {
+                const errorMessages = result.errors.map(e => e.message).join('; ');
+                throw this._createError(
+                    'GraphQLError',
+                    `GraphQL query failed: ${errorMessages}`
+                );
+            }
+
+            // Log successful request with timing
+            const duration = performance.now() - startTime;
+            if (window.logger) {
+                window.logger.info(`GraphQL query completed (${duration.toFixed(0)}ms)`);
+            }
+
+            return result.data;
+        } catch (error) {
+            // Log error with timing and full context
+            const duration = performance.now() - startTime;
+            if (window.logger) {
+                window.logger.error(`GraphQL query failed (${duration.toFixed(0)}ms)`, {
+                    errorType: error.errorType || error.name,
+                    message: error.message
+                });
+            }
+
+            // Re-throw our custom errors (already have context)
+            if (error.name === 'GitLabAPIError') {
+                throw error;
+            }
+
+            // Handle network errors with context
+            throw this._wrapNetworkError(error, url, 'graphql');
+        }
+    }
+
+    /**
      * Make authenticated request to GitLab API with timeout
      *
      * @param {string} endpoint - API endpoint path (without /api/v4 prefix)
@@ -497,6 +590,158 @@ class GitLabAPIClient {
     }
 
     /**
+     * Fetch pipelines using GraphQL API (includes user information)
+     *
+     * GraphQL allows us to fetch user information with pipelines in a single query,
+     * unlike the REST API which requires separate calls or extracting from jobs.
+     *
+     * @param {Array} projects - Array of project objects with id property
+     * @param {string} updatedAfter - ISO 8601 timestamp to filter pipelines (required)
+     * @returns {Promise<Array>} - Array of pipeline objects in REST API format
+     * @throws {Error} - If GraphQL query fails
+     */
+    async fetchPipelinesGraphQL(projects, updatedAfter) {
+        if (!Array.isArray(projects) || projects.length === 0) {
+            throw this._createError(
+                'ConfigurationError',
+                'Projects array is empty or invalid'
+            );
+        }
+
+        // GraphQL query to fetch pipelines with user information
+        // Note: We query by project ID (gid://gitlab/Project/123 format)
+        const query = `
+            query GetPipelines($projectIds: [ID!]!, $updatedAfter: Time) {
+                projects(ids: $projectIds) {
+                    nodes {
+                        id
+                        fullPath
+                        pipelines(updatedAfter: $updatedAfter, first: 100) {
+                            nodes {
+                                id
+                                iid
+                                status
+                                ref
+                                sha
+                                createdAt
+                                updatedAt
+                                startedAt
+                                finishedAt
+                                duration
+                                user {
+                                    id
+                                    username
+                                    name
+                                    avatarUrl
+                                }
+                            }
+                            pageInfo {
+                                hasNextPage
+                                endCursor
+                            }
+                        }
+                    }
+                }
+            }
+        `;
+
+        // Convert project IDs to GitLab GraphQL ID format (gid://gitlab/Project/123)
+        const projectIds = projects.map(p => `gid://gitlab/Project/${p.id}`);
+
+        // Execute GraphQL query
+        const variables = {
+            projectIds: projectIds,
+            updatedAfter: updatedAfter
+        };
+
+        try {
+            const data = await this.graphqlQuery(query, variables);
+
+            // Transform GraphQL response to REST API format
+            const pipelines = [];
+
+            if (data.projects && data.projects.nodes) {
+                for (const project of data.projects.nodes) {
+                    // Extract numeric project ID from GraphQL ID (gid://gitlab/Project/123 -> 123)
+                    const projectIdMatch = project.id.match(/\/(\d+)$/);
+                    const projectId = projectIdMatch ? parseInt(projectIdMatch[1], 10) : null;
+
+                    if (!projectId) {
+                        console.warn(`Failed to extract project ID from GraphQL ID: ${project.id}`);
+                        continue;
+                    }
+
+                    const projectPath = project.fullPath || '';
+
+                    if (project.pipelines && project.pipelines.nodes) {
+                        for (const pipeline of project.pipelines.nodes) {
+                            // Extract numeric pipeline ID from GraphQL ID
+                            const pipelineIdMatch = pipeline.id.match(/\/(\d+)$/);
+                            const pipelineId = pipelineIdMatch ? parseInt(pipelineIdMatch[1], 10) : null;
+
+                            if (!pipelineId) {
+                                console.warn(`Failed to extract pipeline ID from GraphQL ID: ${pipeline.id}`);
+                                continue;
+                            }
+
+                            // Transform GraphQL format to REST API format
+                            pipelines.push({
+                                id: pipelineId,
+                                iid: pipeline.iid,
+                                project_id: projectId,
+                                status: pipeline.status.toLowerCase(), // GraphQL uses uppercase, REST uses lowercase
+                                ref: pipeline.ref,
+                                sha: pipeline.sha,
+                                created_at: pipeline.createdAt,
+                                updated_at: pipeline.updatedAt,
+                                started_at: pipeline.startedAt,
+                                finished_at: pipeline.finishedAt,
+                                duration: pipeline.duration,
+                                web_url: `${this.gitlabUrl}/${projectPath}/-/pipelines/${pipelineId}`,
+                                user: pipeline.user ? {
+                                    id: this._extractNumericId(pipeline.user.id),
+                                    username: pipeline.user.username,
+                                    name: pipeline.user.name,
+                                    avatar_url: pipeline.user.avatarUrl
+                                } : null
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (window.logger) {
+                window.logger.info(`GraphQL fetched ${pipelines.length} pipelines from ${projects.length} projects`);
+            }
+
+            return pipelines;
+
+        } catch (error) {
+            // Re-throw with context
+            if (error.name === 'GitLabAPIError') {
+                throw error;
+            }
+            throw this._createError(
+                'GraphQLError',
+                `Failed to fetch pipelines via GraphQL: ${error.message}`
+            );
+        }
+    }
+
+    /**
+     * Extract numeric ID from GitLab GraphQL global ID
+     * GraphQL IDs are in format: gid://gitlab/Model/123
+     *
+     * @param {string} gid - GraphQL global ID
+     * @returns {number|null} - Numeric ID or null if extraction fails
+     */
+    _extractNumericId(gid) {
+        if (!gid) return null;
+        const match = gid.match(/\/(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
+    }
+
+    /**
      * Fetch pipelines for given projects within specified time range
      *
      * Fetches all pipelines for the provided projects, filtering by the provided
@@ -549,49 +794,75 @@ class GitLabAPIClient {
             );
         }
 
-        // Fetch pipelines for all projects using allSettled for partial success
-        const pipelinePromises = projects.map(project =>
-            this._requestPaginated(
-                `/projects/${project.id}/pipelines`,
-                {
-                    updated_after: timestamp,
-                    order_by: 'updated_at',
-                    sort: 'desc'
-                }
-            ).then(pipelines => ({
-                projectId: project.id,
-                success: true,
-                pipelines: pipelines.map(p => ({ ...p, project_id: project.id }))
-            }))
-            .catch(error => ({
-                projectId: project.id,
-                success: false,
-                error: error
-            }))
-        );
+        // Try GraphQL first (includes user information), fall back to REST API
+        try {
+            if (window.logger) {
+                window.logger.info('Attempting to fetch pipelines via GraphQL API (includes user data)');
+            }
 
-        const results = await Promise.all(pipelinePromises);
+            const pipelines = await this.fetchPipelinesGraphQL(projects, timestamp);
 
-        // Separate successful and failed fetches
-        const succeeded = results.filter(r => r.success);
-        const failed = results.filter(r => !r.success);
+            if (window.logger) {
+                window.logger.info(`GraphQL fetch successful: ${pipelines.length} pipelines with user information`);
+            }
 
-        // Log warnings for failed projects
-        if (failed.length > 0) {
-            console.warn(`Failed to fetch pipelines for ${failed.length} of ${projects.length} projects:`,
-                failed.map(f => `${f.projectId}: ${f.error.message}`));
-        }
+            return pipelines;
 
-        // Fail if ALL projects failed
-        if (succeeded.length === 0) {
-            throw this._createError(
-                'PipelineFetchError',
-                `Failed to fetch pipelines for all ${projects.length} configured projects`
+        } catch (graphqlError) {
+            // Log GraphQL failure and fall back to REST API
+            if (window.logger) {
+                window.logger.warn(
+                    'GraphQL fetch failed, falling back to REST API (user info will be extracted from jobs)',
+                    { error: graphqlError.message }
+                );
+            }
+
+            // Fall back to REST API (original implementation)
+            const pipelinePromises = projects.map(project =>
+                this._requestPaginated(
+                    `/projects/${project.id}/pipelines`,
+                    {
+                        updated_after: timestamp,
+                        order_by: 'updated_at',
+                        sort: 'desc'
+                    }
+                ).then(pipelines => {
+                    return {
+                        projectId: project.id,
+                        success: true,
+                        pipelines: pipelines.map(p => ({ ...p, project_id: project.id }))
+                    };
+                })
+                .catch(error => ({
+                    projectId: project.id,
+                    success: false,
+                    error: error
+                }))
             );
-        }
 
-        // Flatten and return all successful pipeline results
-        return succeeded.flatMap(s => s.pipelines);
+            const results = await Promise.all(pipelinePromises);
+
+            // Separate successful and failed fetches
+            const succeeded = results.filter(r => r.success);
+            const failed = results.filter(r => !r.success);
+
+            // Log warnings for failed projects
+            if (failed.length > 0) {
+                console.warn(`Failed to fetch pipelines for ${failed.length} of ${projects.length} projects:`,
+                    failed.map(f => `${f.projectId}: ${f.error.message}`));
+            }
+
+            // Fail if ALL projects failed
+            if (succeeded.length === 0) {
+                throw this._createError(
+                    'PipelineFetchError',
+                    `Failed to fetch pipelines for all ${projects.length} configured projects`
+                );
+            }
+
+            // Flatten and return all successful pipeline results
+            return succeeded.flatMap(s => s.pipelines);
+        }
     }
 
     /**
