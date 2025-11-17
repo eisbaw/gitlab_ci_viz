@@ -269,7 +269,7 @@ class GitLabAPIClient {
      *     finished_at: string|null (ISO 8601),
      *     duration: number|null (seconds),
      *     web_url: string,
-     *     user: {id: number, username: string, name: string}
+     *     user: {id: number, username: string, name: string, avatar_url: string}
      *   }]
      */
     async getProjectPipelines(projectId, params = {}) {
@@ -294,7 +294,7 @@ class GitLabAPIClient {
      *     finished_at: string|null (ISO 8601),
      *     duration: number|null (seconds),
      *     web_url: string,
-     *     user: {id: number, username: string, name: string}|null
+     *     user: {id: number, username: string, name: string, avatar_url: string}|null
      *   }]
      */
     async getPipelineJobs(projectId, pipelineId) {
@@ -613,7 +613,7 @@ class GitLabAPIClient {
      *     finished_at: string|null,
      *     duration: number|null,
      *     web_url: string,
-     *     user: {id, username, name}|null,
+     *     user: {id, username, name, avatar_url}|null,
      *     project_id: number,
      *     pipeline_id: number
      *   }]

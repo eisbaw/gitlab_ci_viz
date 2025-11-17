@@ -8,7 +8,7 @@
  * - Time-based sorting (newest pipelines first)
  * - Project-based color coding (consistent colors per project)
  * - Status indication via border styles (dashed for failed, dotted for running, etc.)
- * - Manual job styling (grey, 50% opacity, circular shape)
+ * - Unexecuted job styling (manual/skipped: grey, 50% opacity, circular shape)
  * - Collapsible pipeline groups
  * - Interactive tooltips
  * - Click to open GitLab pages
@@ -33,6 +33,10 @@ class D3GanttChart {
         this.labelPadding = 6;
         this.indentWidth = 15;
         this.minBarWidthForText = 40;  // Minimum bar width to show text label
+
+        // Avatar configuration
+        this.avatarSize = 16;  // Small circular avatars (16px diameter)
+        this.avatarOffset = -22;  // Position to the left of bars (margin from bar start)
 
         // State
         this.expandedPipelines = new Set();
@@ -97,15 +101,25 @@ class D3GanttChart {
         this.chartGroup.append('g').attr('class', 'contention-layer');
         this.chartGroup.append('g').attr('class', 'pipeline-backgrounds-layer');
         this.chartGroup.append('g').attr('class', 'bars-layer');
+        this.chartGroup.append('g').attr('class', 'avatars-layer');
         this.chartGroup.append('g').attr('class', 'current-time-layer');
         this.chartGroup.append('g').attr('class', 'axis-layer');
         this.svg.append('g').attr('class', 'labels-layer')
             .attr('transform', `translate(0,${this.margin.top})`);
+
+        // Define circular clipPath for avatars (reusable)
+        const defs = this.svg.append('defs');
+        defs.append('clipPath')
+            .attr('id', 'avatar-clip')
+            .append('circle')
+            .attr('cx', this.avatarSize / 2)
+            .attr('cy', this.avatarSize / 2)
+            .attr('r', this.avatarSize / 2);
     }
 
     /**
      * Render GANTT chart with given data
-     * @param {Array} domainModel - Array of User/Project objects with pipelines
+     * @param {Array} domainModel - Array of GroupKey objects with pipelines (projects or users)
      * @param {Array} contentionPeriods - Resource contention periods
      */
     render(domainModel, contentionPeriods = []) {
@@ -172,6 +186,7 @@ class D3GanttChart {
         this.renderContention(width);
         this.renderPipelineBackgrounds(rows);
         this.renderBars(rows);
+        this.renderAvatars(rows);
         this.renderCurrentTime(height);
         this.renderAxis(width);
         this.renderLabels(rows);
@@ -236,6 +251,7 @@ class D3GanttChart {
                         end: job.getEndTime(),
                         status: job.status,
                         job: job,
+                        pipeline: pipeline,  // Add pipeline reference for avatar resolution
                         pipelineId: pipeline.id,
                         projectId: projectId,
                         projectName: projectName,
@@ -346,6 +362,7 @@ class D3GanttChart {
             this.renderPipelineBackgrounds(rows);
             // Use zoom mode for minimal DOM updates (only x-positions and widths)
             this.renderBars(rows, 'zoom');
+            this.renderAvatars(rows);
             this.renderCurrentTime(this.getChartHeight());
             this.renderAxis(this.getChartWidth());
             this.zoomRafId = null;
@@ -458,6 +475,14 @@ class D3GanttChart {
      */
     isManualJob(d) {
         return d.type === 'job' && d.status === 'manual';
+    }
+
+    /**
+     * Check if a job is an unexecuted job (manual or skipped)
+     * These jobs haven't actually run, so they get grey/transparent/circular styling
+     */
+    isUnexecutedJob(d) {
+        return d.type === 'job' && (d.status === 'manual' || d.status === 'skipped');
     }
 
     /**
@@ -626,23 +651,23 @@ class D3GanttChart {
                 })
                 .attr('width', 0)
                 .attr('height', this.barHeight)
-                .attr('rx', d => this.isManualJob(d) ? this.barHeight / 2 : 2)  // Circular for manual jobs
+                .attr('rx', d => this.isUnexecutedJob(d) ? this.barHeight / 2 : 2)  // Circular for unexecuted jobs
                 .attr('fill', d => {
-                    if (this.isManualJob(d)) {
-                        return '#9e9e9e';  // Grey for manual jobs
+                    if (this.isUnexecutedJob(d)) {
+                        return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
-                .attr('fill-opacity', d => this.isManualJob(d) ? 0.5 : 1)  // 50% opacity for manual
+                .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
                 .attr('stroke', d => {
-                    if (this.isManualJob(d)) {
-                        return '#757575';  // Darker grey border for manual jobs
+                    if (this.isUnexecutedJob(d)) {
+                        return '#757575';  // Darker grey border for unexecuted jobs
                     }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.stroke;
                 })
-                .attr('stroke-opacity', d => this.isManualJob(d) ? 0.7 : 1)
+                .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);
                     return borderStyle.width;
@@ -672,23 +697,23 @@ class D3GanttChart {
                     const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return Math.max(w, 4);
                 })
-                .attr('rx', d => this.isManualJob(d) ? this.barHeight / 2 : 2)  // Circular for manual jobs
+                .attr('rx', d => this.isUnexecutedJob(d) ? this.barHeight / 2 : 2)  // Circular for unexecuted jobs
                 .attr('fill', d => {
-                    if (this.isManualJob(d)) {
-                        return '#9e9e9e';  // Grey for manual jobs
+                    if (this.isUnexecutedJob(d)) {
+                        return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
-                .attr('fill-opacity', d => this.isManualJob(d) ? 0.5 : 1)  // 50% opacity for manual
+                .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
                 .attr('stroke', d => {
-                    if (this.isManualJob(d)) {
-                        return '#757575';  // Darker grey border for manual jobs
+                    if (this.isUnexecutedJob(d)) {
+                        return '#757575';  // Darker grey border for unexecuted jobs
                     }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.stroke;
                 })
-                .attr('stroke-opacity', d => this.isManualJob(d) ? 0.7 : 1)
+                .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);
                     return borderStyle.width;
@@ -829,6 +854,174 @@ class D3GanttChart {
         };
 
         this.showTooltip(syntheticEvent, d);
+    }
+
+    /**
+     * Render user avatars next to pipeline and job bars
+     */
+    renderAvatars(rows) {
+        const avatarsLayer = this.chartGroup.select('.avatars-layer');
+
+        // Get all bars that should have avatars (exclude expanded pipelines)
+        const barsWithAvatars = rows.filter(r => {
+            if (r.type === 'group') return false;
+            if (r.type === 'pipeline' && r.expanded) return false;
+            return true;
+        });
+
+        // Extract avatar data from rows
+        const avatarData = barsWithAvatars.map((row, i) => {
+            const rowIndex = rows.indexOf(row);
+            let user = null;
+
+            if (row.type === 'pipeline' && row.pipeline) {
+                // Use triggeringUser (actual GitLab user) instead of group (which may be project)
+                user = row.pipeline.triggeringUser || row.pipeline.group;
+            } else if (row.type === 'job' && row.job) {
+                // Jobs may have their own user field (who triggered the manual job)
+                // Fall back to pipeline's triggering user if not available
+                user = row.job.user || (row.pipeline ? row.pipeline.triggeringUser : null) || (row.pipeline ? row.pipeline.group : null);
+            }
+
+            const avatarUrl = user?.avatar_url || null;
+            console.log(`Avatar for ${row.type} ${row.pipeline?.id || row.job?.id}: user=${user?.username}, avatar_url=${avatarUrl}`);
+
+            return {
+                rowIndex: rowIndex,
+                row: row,
+                user: user,
+                avatarUrl: avatarUrl,
+                username: user?.username || 'unknown',
+                name: user?.name || user?.username || 'Unknown User'
+            };
+        });
+
+        // Create avatar groups (one per bar)
+        const avatarGroups = avatarsLayer.selectAll('g.avatar-container')
+            .data(avatarData, (d, i) => `${d.row.type}-${d.rowIndex}`);
+
+        avatarGroups.join(
+            enter => {
+                const g = enter.append('g')
+                    .attr('class', 'avatar-container')
+                    .attr('transform', d => {
+                        const barX = this.xScale(new Date(d.row.start));
+                        const barY = this.yScale(d.rowIndex) + (this.rowHeight - this.avatarSize) / 2;
+                        return `translate(${barX + this.avatarOffset}, ${barY})`;
+                    });
+
+                // Check if avatar URL is available
+                g.each((d, i, nodes) => {
+                    const group = d3.select(nodes[i]);
+
+                    if (d.avatarUrl) {
+                        // Add width parameter to optimize image size
+                        const optimizedUrl = d.avatarUrl.includes('?')
+                            ? `${d.avatarUrl}&width=${this.avatarSize * 2}`
+                            : `${d.avatarUrl}?width=${this.avatarSize * 2}`;
+
+                        console.log(`Rendering avatar image: ${optimizedUrl}`);
+
+                        // Render avatar image
+                        group.append('image')
+                            .attr('class', 'avatar-image')
+                            .attr('xlink:href', optimizedUrl)
+                            .attr('width', this.avatarSize)
+                            .attr('height', this.avatarSize)
+                            .attr('clip-path', 'url(#avatar-clip)')
+                            .attr('preserveAspectRatio', 'xMidYMid slice')
+                            .on('error', function(event) {
+                                console.error(`Avatar image failed to load: ${optimizedUrl}`, event);
+                                // Fallback: replace with initials circle if image fails to load
+                                d3.select(this).remove();
+                                const parent = d3.select(this.parentNode);
+                                const initials = this.getInitials(d.name);
+                                this.renderFallbackAvatar(parent, initials);
+                            }.bind(this));
+
+                        // Add border circle
+                        group.append('circle')
+                            .attr('class', 'avatar-border')
+                            .attr('cx', this.avatarSize / 2)
+                            .attr('cy', this.avatarSize / 2)
+                            .attr('r', this.avatarSize / 2)
+                            .attr('fill', 'none')
+                            .attr('stroke', '#dee2e6')
+                            .attr('stroke-width', 1);
+                    } else {
+                        // No avatar URL: render fallback (initials)
+                        const initials = this.getInitials(d.name);
+                        this.renderFallbackAvatar(group, initials);
+                    }
+                });
+
+                // Add tooltip
+                g.append('title')
+                    .text(d => d.name || d.username);
+
+                return g;
+            },
+            update => update
+                .attr('transform', d => {
+                    const barX = this.xScale(new Date(d.row.start));
+                    const barY = this.yScale(d.rowIndex) + (this.rowHeight - this.avatarSize) / 2;
+                    return `translate(${barX + this.avatarOffset}, ${barY})`;
+                })
+        );
+    }
+
+    /**
+     * Get initials from name (for avatar fallback)
+     */
+    getInitials(name) {
+        if (!name) return '?';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length === 1) {
+            return parts[0].substring(0, 2).toUpperCase();
+        }
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    /**
+     * Render fallback avatar (colored circle with initials)
+     */
+    renderFallbackAvatar(group, initials) {
+        // Generate consistent color from initials
+        let hash = 0;
+        for (let i = 0; i < initials.length; i++) {
+            hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+
+        // Background circle
+        group.append('circle')
+            .attr('class', 'avatar-fallback-bg')
+            .attr('cx', this.avatarSize / 2)
+            .attr('cy', this.avatarSize / 2)
+            .attr('r', this.avatarSize / 2)
+            .attr('fill', `hsl(${hue}, 55%, 60%)`);
+
+        // Initials text
+        group.append('text')
+            .attr('class', 'avatar-fallback-text')
+            .attr('x', this.avatarSize / 2)
+            .attr('y', this.avatarSize / 2)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', `${Math.floor(this.avatarSize * 0.5)}px`)
+            .attr('font-weight', '600')
+            .attr('fill', 'white')
+            .text(initials);
+
+        // Border circle
+        group.append('circle')
+            .attr('class', 'avatar-border')
+            .attr('cx', this.avatarSize / 2)
+            .attr('cy', this.avatarSize / 2)
+            .attr('r', this.avatarSize / 2)
+            .attr('fill', 'none')
+            .attr('stroke', '#dee2e6')
+            .attr('stroke-width', 1);
     }
 
     /**
@@ -1176,6 +1369,11 @@ class D3GanttChart {
         // Add note for manual jobs
         if (job.status === 'manual') {
             parts.push(`⚠ Requires manual trigger`);
+        }
+
+        // Add note for skipped jobs
+        if (job.status === 'skipped') {
+            parts.push(`⊘ Skipped (conditions not met)`);
         }
 
         if (job.startedAt) {

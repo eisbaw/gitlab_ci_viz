@@ -850,6 +850,24 @@
         .pipeline-background {
             pointer-events: none; /* Don't intercept mouse/click events */
         }
+
+        /* Avatar styles */
+        .avatar-container {
+            pointer-events: none; /* Don't intercept mouse events */
+        }
+        .avatar-image {
+            shape-rendering: auto;
+        }
+        .avatar-fallback-bg {
+            shape-rendering: geometricPrecision;
+        }
+        .avatar-fallback-text {
+            pointer-events: none;
+            user-select: none;
+        }
+        .avatar-border {
+            shape-rendering: geometricPrecision;
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>
@@ -1039,16 +1057,16 @@
                 </div>
             </div>
 
-            <!-- Manual Jobs -->
+            <!-- Unexecuted Jobs (Manual & Skipped) -->
             <div class="legend-section">
-                <div class="legend-section-title">Manual Jobs</div>
+                <div class="legend-section-title">Unexecuted Jobs</div>
                 <div class="legend-item">
                     <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
                         <rect x="0" y="4" width="40" height="8" fill="#9e9e9e" fill-opacity="0.5" stroke="#757575" stroke-opacity="0.7" stroke-width="2" rx="4"/>
                     </svg>
-                    <span class="legend-text">Manual job (requires trigger)</span>
+                    <span class="legend-text">Manual / Skipped jobs</span>
                 </div>
-                <div class="legend-project-note">Jobs that need manual intervention to start</div>
+                <div class="legend-project-note">Manual jobs require trigger; skipped jobs had unmet conditions</div>
             </div>
 
             <!-- Project Colors -->
@@ -1805,7 +1823,7 @@
             const { filteredPipelines, filteredJobs } = computeFilteredData();
 
             const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
-            const allPipelines = domainModel.flatMap(user => user.pipelines);
+            const allPipelines = domainModel.flatMap(group => group.pipelines);
             const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
 
             ganttChart.render(domainModel, contentionPeriods);
@@ -2251,7 +2269,7 @@
                 updateDataFetchInfo('Transforming data...', '', 90, false);
                 const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
 
-                const allPipelines = domainModel.flatMap(user => user.pipelines);
+                const allPipelines = domainModel.flatMap(group => group.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
 
                 // Stage 5: Render (95-100%)

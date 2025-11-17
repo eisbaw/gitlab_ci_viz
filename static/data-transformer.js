@@ -2,10 +2,10 @@
  * Data Transformer Module
  *
  * Transforms GitLab API responses into domain model and vis.js Timeline format.
- * Implements user-centric organization with proper hierarchical grouping.
+ * Implements grouping organization (by project or user) with proper hierarchical grouping.
  *
  * Domain Model:
- * - User: Represents a GitLab user who triggered pipelines
+ * - GroupKey: Represents a grouping key for organizing pipelines (either project or user)
  * - Pipeline: Represents a CI/CD pipeline execution
  * - Job: Represents individual jobs within a pipeline
  * - Activity: Represents a time-bound activity (pipeline or job) on the timeline
@@ -42,25 +42,31 @@
  */
 
 /**
- * Domain Model: User
- * Represents a GitLab user who triggered pipelines
+ * Domain Model: GroupKey
+ * Represents a grouping key for organizing pipelines.
+ * This can represent either a GitLab project (when grouping by project)
+ * or a GitLab user (when grouping by user).
+ *
+ * Note: This is NOT the triggering user of a pipeline - see pipeline.triggeringUser for that.
  */
-class User {
+class GroupKey {
     /**
-     * Create a User instance
-     * @param {number} id - User ID
-     * @param {string} username - Username
+     * Create a GroupKey instance
+     * @param {number} id - Group ID (project ID or user ID depending on grouping mode)
+     * @param {string} username - Username or project path
      * @param {string} [name] - Display name (defaults to username)
+     * @param {string} [avatar_url] - Avatar URL from GitLab/Gravatar (null for projects)
      */
-    constructor(id, username, name) {
+    constructor(id, username, name, avatar_url = null) {
         this.id = id;
         this.username = username;
         this.name = name || username;
+        this.avatar_url = avatar_url;
         this.pipelines = [];
     }
 
     /**
-     * Add a pipeline to this user
+     * Add a pipeline to this group
      * @param {Pipeline} pipeline - Pipeline to add
      * @returns {void}
      */
@@ -74,7 +80,7 @@ class User {
      * @returns {string} Display name
      */
     getDisplayName() {
-        return this.name || this.username || `User ${this.id}`;
+        return this.name || this.username || `Group ${this.id}`;
     }
 }
 
@@ -93,10 +99,11 @@ class Pipeline {
      * @param {string|null} finishedAt - ISO 8601 finish timestamp
      * @param {number|null} duration - Duration in seconds
      * @param {string} webUrl - URL to pipeline page
-     * @param {User} user - User who triggered the pipeline
+     * @param {GroupKey} group - The group this pipeline belongs to for display (project or user)
      * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
+     * @param {Object|null} triggeringUser - The actual GitLab user who triggered this pipeline (from API)
      */
-    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, user, projectPathWithNamespace = null) {
+    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, group, projectPathWithNamespace = null, triggeringUser = null) {
         // Validate required fields
         if (!id || !projectId || !status || !createdAt) {
             throw new Error(`Invalid pipeline data: missing required fields (id=${id}, projectId=${projectId}, status=${status}, createdAt=${createdAt})`);
@@ -122,7 +129,8 @@ class Pipeline {
         this.finishedAt = finishedAt;
         this.duration = duration;
         this.webUrl = webUrl;
-        this.user = user;
+        this.group = group; // The group this pipeline belongs to (project or user, for display purposes)
+        this.triggeringUser = triggeringUser; // Actual GitLab user who triggered this pipeline
         this.jobs = [];
     }
 
@@ -244,8 +252,9 @@ class Job {
      * @param {string} webUrl - URL to job page
      * @param {number} pipelineId - Parent pipeline ID
      * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
+     * @param {Object|null} user - User who triggered the job (optional, for manual jobs)
      */
-    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectPathWithNamespace = null) {
+    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectPathWithNamespace = null, user = null) {
         // Validate required fields
         if (!id || !name || !status || !createdAt || !pipelineId) {
             throw new Error(`Invalid job data: missing required fields (id=${id}, name=${name}, status=${status}, createdAt=${createdAt}, pipelineId=${pipelineId})`);
@@ -273,6 +282,7 @@ class Job {
         this.webUrl = webUrl;
         this.pipelineId = pipelineId;
         this.projectPathWithNamespace = projectPathWithNamespace;
+        this.user = user;
     }
 
     /**
@@ -343,46 +353,49 @@ class DataTransformer {
      * @param {Array} pipelines - Array of pipeline objects from GitLab API
      * @param {Array} jobs - Array of job objects from GitLab API
      * @param {Map} projectMap - Map of project ID to project object (optional, for project-based grouping)
-     * @returns {Array<User>} - Array of User domain objects with nested pipelines and jobs
+     * @returns {Array<GroupKey>} - Array of GroupKey domain objects with nested pipelines and jobs
      */
     static transformToDomainModel(pipelines, jobs, projectMap = null) {
-        // Create user map: userId -> User object (or projectId -> User object when grouping by project)
-        const userMap = new Map();
+        // Create group map: groupId -> GroupKey object (projectId or userId depending on grouping mode)
+        const groupMap = new Map();
 
         // Create pipeline map: pipelineId -> Pipeline object
         const pipelineMap = new Map();
 
         // Step 1: Process pipelines and group by project (if projectMap provided) or user
         for (const apiPipeline of pipelines) {
-            let userId, username, name;
+            let groupId, username, name, avatar_url;
             let projectPathWithNamespace = null;
 
             if (projectMap) {
-                // Group by project instead of user
+                // Group by project
                 const project = projectMap.get(apiPipeline.project_id);
                 if (project) {
-                    userId = project.id;
+                    groupId = project.id;
                     username = project.path || project.name;
                     name = project.name;
                     projectPathWithNamespace = project.path_with_namespace;
+                    avatar_url = null; // Projects don't have avatars
                 } else {
                     // Fallback if project not found
-                    userId = apiPipeline.project_id;
+                    groupId = apiPipeline.project_id;
                     username = `project-${apiPipeline.project_id}`;
                     name = username;
+                    avatar_url = null;
                 }
             } else {
-                // Original behavior: group by user
-                userId = apiPipeline.user?.id || 0;
+                // Group by user
+                groupId = apiPipeline.user?.id || 0;
                 username = apiPipeline.user?.username || 'unknown';
                 name = apiPipeline.user?.name || username;
+                avatar_url = apiPipeline.user?.avatar_url || null;
             }
 
-            // Get or create user (or project-as-user)
-            if (!userMap.has(userId)) {
-                userMap.set(userId, new User(userId, username, name));
+            // Get or create group key
+            if (!groupMap.has(groupId)) {
+                groupMap.set(groupId, new GroupKey(groupId, username, name, avatar_url));
             }
-            const user = userMap.get(userId);
+            const group = groupMap.get(groupId);
 
             // Create pipeline domain object
             const pipeline = new Pipeline(
@@ -394,12 +407,13 @@ class DataTransformer {
                 apiPipeline.finished_at,
                 apiPipeline.duration,
                 apiPipeline.web_url,
-                user,
-                projectPathWithNamespace
+                group,
+                projectPathWithNamespace,
+                apiPipeline.user || null  // Store actual triggering user from API
             );
 
-            // Add to user and map
-            user.addPipeline(pipeline);
+            // Add to group and map
+            group.addPipeline(pipeline);
             pipelineMap.set(pipeline.id, pipeline);
         }
 
@@ -425,15 +439,16 @@ class DataTransformer {
                 apiJob.duration,
                 apiJob.web_url,
                 pipelineId,
-                pipeline.projectPathWithNamespace
+                pipeline.projectPathWithNamespace,
+                apiJob.user || null
             );
 
             // Add to pipeline
             pipeline.addJob(job);
         }
 
-        // Return array of users sorted by username
-        return Array.from(userMap.values()).sort((a, b) =>
+        // Return array of groups sorted by username
+        return Array.from(groupMap.values()).sort((a, b) =>
             a.username.localeCompare(b.username)
         );
     }
@@ -608,28 +623,28 @@ class DataTransformer {
     /**
      * Transform domain model to vis.js Timeline format
      *
-     * @param {User[]} users - Array of User domain objects
+     * @param {GroupKey[]} groups - Array of GroupKey domain objects
      * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
      */
-    static transformToVisFormat(users) {
-        const groups = [];
+    static transformToVisFormat(groups) {
+        const visGroups = [];
         const items = [];
 
-        for (const user of users) {
-            // Create user group (parent)
-            const userGroupId = `user-${user.id}`;
-            const userGroup = {
-                id: userGroupId,
-                content: this.escapeHtml(user.getDisplayName()),
+        for (const groupKey of groups) {
+            // Create group (parent)
+            const groupId = `group-${groupKey.id}`;
+            const visGroup = {
+                id: groupId,
+                content: this.escapeHtml(groupKey.getDisplayName()),
                 nestedGroups: [],
                 showNested: true  // Show nested groups by default
             };
 
-            // Process each pipeline for this user
-            for (const pipeline of user.pipelines) {
-                // Create pipeline group (child of user)
+            // Process each pipeline for this group
+            for (const pipeline of groupKey.pipelines) {
+                // Create pipeline group (child of group)
                 const pipelineGroupId = `pipeline-${pipeline.id}`;
-                userGroup.nestedGroups.push(pipelineGroupId);
+                visGroup.nestedGroups.push(pipelineGroupId);
 
                 const pipelineGroup = {
                     id: pipelineGroupId,
@@ -637,7 +652,7 @@ class DataTransformer {
                     nestedGroups: [],
                     showNested: false  // Enable collapse/expand functionality
                 };
-                groups.push(pipelineGroup);
+                visGroups.push(pipelineGroup);
 
                 // Create pipeline item (timeline bar)
                 const pipelineItem = {
@@ -662,7 +677,7 @@ class DataTransformer {
                         id: jobGroupId,
                         content: `${this.escapeHtml(job.stage)}: ${this.escapeHtml(job.name)}`
                     };
-                    groups.push(jobGroup);
+                    visGroups.push(jobGroup);
 
                     // Create job item (timeline bar)
                     const jobItem = {
@@ -679,11 +694,11 @@ class DataTransformer {
                 }
             }
 
-            // Add user group last (after nested groups are populated)
-            groups.push(userGroup);
+            // Add group last (after nested groups are populated)
+            visGroups.push(visGroup);
         }
 
-        return { groups, items };
+        return { groups: visGroups, items };
     }
 
     /**
@@ -692,7 +707,7 @@ class DataTransformer {
      * @param {Object[]} pipelines - Array of pipeline objects from GitLab API
      * @param {Object[]} jobs - Array of job objects from GitLab API
      * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
-     * @throws {Error} If no users/pipelines found (indicates API issue or wrong time range)
+     * @throws {Error} If no groups/pipelines found (indicates API issue or wrong time range)
      */
     static transform(pipelines, jobs, projectMap = null) {
         console.log(`Transforming ${pipelines.length} pipelines and ${jobs.length} jobs`);
@@ -703,17 +718,17 @@ class DataTransformer {
         }
 
         // Step 1: Transform to domain model
-        const users = this.transformToDomainModel(pipelines, jobs, projectMap);
+        const groups = this.transformToDomainModel(pipelines, jobs, projectMap);
         const groupType = projectMap ? 'projects' : 'users';
-        console.log(`Grouped into ${users.length} ${groupType} with ${users.reduce((sum, u) => sum + u.pipelines.length, 0)} pipelines`);
+        console.log(`Grouped into ${groups.length} ${groupType} with ${groups.reduce((sum, g) => sum + g.pipelines.length, 0)} pipelines`);
 
-        // Validate domain model (fail fast if transformation produced no users)
-        if (!Array.isArray(users) || users.length === 0) {
-            throw new Error('Transformation produced no users - this indicates a data integrity issue');
+        // Validate domain model (fail fast if transformation produced no groups)
+        if (!Array.isArray(groups) || groups.length === 0) {
+            throw new Error('Transformation produced no groups - this indicates a data integrity issue');
         }
 
         // Step 2: Transform to vis.js format
-        const result = this.transformToVisFormat(users);
+        const result = this.transformToVisFormat(groups);
         console.log(`Generated ${result.groups.length} groups and ${result.items.length} timeline items`);
 
         return result;
