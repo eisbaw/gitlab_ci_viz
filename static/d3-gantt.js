@@ -354,9 +354,9 @@ class D3GanttChart {
         // Scale to hue (0-360 degrees)
         const hue = (hash16 / 65535) * 360;
 
-        // Matte appearance: low saturation, moderate lightness
+        // Matte appearance: low saturation, higher lightness for brightness
         const saturation = 35;  // Low saturation for matte look
-        const lightness = 55;   // Slightly lighter for better visibility
+        const lightness = 70;   // Higher lightness for brighter appearance
 
         const fillColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
         const strokeColor = `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 10, 30)}%)`;
