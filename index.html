@@ -1641,25 +1641,25 @@
                 } else if (e.key === 'ArrowLeft') {
                     e.preventDefault();
                     if (ganttChart && ganttChart.pan) {
-                        ganttChart.pan(-50, 0);
+                        ganttChart.pan(50, 0);
                         announceToScreenReader('Panned left', true);
                     }
                 } else if (e.key === 'ArrowRight') {
                     e.preventDefault();
                     if (ganttChart && ganttChart.pan) {
-                        ganttChart.pan(50, 0);
+                        ganttChart.pan(-50, 0);
                         announceToScreenReader('Panned right', true);
                     }
                 } else if (e.key === 'ArrowUp') {
                     e.preventDefault();
                     if (ganttChart && ganttChart.pan) {
-                        ganttChart.pan(0, -50);
+                        ganttChart.pan(0, 50);
                         announceToScreenReader('Panned up', true);
                     }
                 } else if (e.key === 'ArrowDown') {
                     e.preventDefault();
                     if (ganttChart && ganttChart.pan) {
-                        ganttChart.pan(0, 50);
+                        ganttChart.pan(0, -50);
                         announceToScreenReader('Panned down', true);
                     }
                 }
