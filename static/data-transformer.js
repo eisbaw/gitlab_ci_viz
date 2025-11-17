@@ -94,8 +94,9 @@ class Pipeline {
      * @param {number|null} duration - Duration in seconds
      * @param {string} webUrl - URL to pipeline page
      * @param {User} user - User who triggered the pipeline
+     * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
      */
-    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, user) {
+    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, user, projectPathWithNamespace = null) {
         // Validate required fields
         if (!id || !projectId || !status || !createdAt) {
             throw new Error(`Invalid pipeline data: missing required fields (id=${id}, projectId=${projectId}, status=${status}, createdAt=${createdAt})`);
@@ -114,6 +115,7 @@ class Pipeline {
 
         this.id = id;
         this.projectId = projectId;
+        this.projectPathWithNamespace = projectPathWithNamespace;
         this.status = status;
         this.createdAt = createdAt;
         this.startedAt = startedAt;
@@ -145,15 +147,37 @@ class Pipeline {
 
     /**
      * Get effective start time for timeline
-     * Falls back to created_at if started_at is null (pending pipelines)
+     * Returns the minimum of:
+     * - Pipeline's own start time (or created_at if pending)
+     * - Earliest job start time (if jobs exist)
+     *
+     * This ensures pipeline bars encompass all their contained jobs.
      * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
-        return this.startedAt || this.createdAt;
+        // Start with pipeline's own start time
+        let pipelineStart = this.startedAt || this.createdAt;
+        let minTime = new Date(pipelineStart);
+
+        // Check all jobs to find earliest start
+        for (const job of this.jobs) {
+            const jobStart = new Date(job.getStartTime());
+            if (jobStart < minTime) {
+                minTime = jobStart;
+            }
+        }
+
+        return minTime.toISOString();
     }
 
     /**
      * Get effective end time for timeline
+     * Returns the maximum of:
+     * - Pipeline's own end time (finished_at, "now" if running, or small offset if pending)
+     * - Latest job end time (if jobs exist)
+     *
+     * This ensures pipeline bars encompass all their contained jobs.
+     *
      * For running pipelines, uses current time
      * For pending pipelines, uses created_at + small offset for visibility
      *
@@ -163,22 +187,34 @@ class Pipeline {
      * @returns {string} ISO 8601 timestamp
      */
     getEndTime() {
+        let pipelineEnd;
+
         if (this.finishedAt) {
-            return this.finishedAt;
+            pipelineEnd = this.finishedAt;
+        } else if (this.startedAt) {
+            // Running pipeline: show until now
+            pipelineEnd = new Date().toISOString();
+        } else {
+            // Pending pipeline: show small bar for visibility (5 minutes)
+            // WHY 5 minutes: Provides visibility without cluttering timeline.
+            // Based on typical GitLab pending queue times before runner assignment.
+            const created = new Date(this.createdAt);
+            const PENDING_VISIBILITY_MS = 5 * 60 * 1000;
+            pipelineEnd = new Date(created.getTime() + PENDING_VISIBILITY_MS).toISOString();
         }
 
-        // Running pipeline: show until now
-        if (this.startedAt) {
-            return new Date().toISOString();
+        // Start with pipeline's own end time
+        let maxTime = new Date(pipelineEnd);
+
+        // Check all jobs to find latest end
+        for (const job of this.jobs) {
+            const jobEnd = new Date(job.getEndTime());
+            if (jobEnd > maxTime) {
+                maxTime = jobEnd;
+            }
         }
 
-        // Pending pipeline: show small bar for visibility (5 minutes)
-        // WHY 5 minutes: Provides visibility without cluttering timeline.
-        // Based on typical GitLab pending queue times before runner assignment.
-        const created = new Date(this.createdAt);
-        const PENDING_VISIBILITY_MS = 5 * 60 * 1000;
-        const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
-        return endTime.toISOString();
+        return maxTime.toISOString();
     }
 
     /**
@@ -207,8 +243,9 @@ class Job {
      * @param {number|null} duration - Duration in seconds
      * @param {string} webUrl - URL to job page
      * @param {number} pipelineId - Parent pipeline ID
+     * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
      */
-    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId) {
+    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectPathWithNamespace = null) {
         // Validate required fields
         if (!id || !name || !status || !createdAt || !pipelineId) {
             throw new Error(`Invalid job data: missing required fields (id=${id}, name=${name}, status=${status}, createdAt=${createdAt}, pipelineId=${pipelineId})`);
@@ -235,6 +272,7 @@ class Job {
         this.duration = duration;
         this.webUrl = webUrl;
         this.pipelineId = pipelineId;
+        this.projectPathWithNamespace = projectPathWithNamespace;
     }
 
     /**
@@ -317,6 +355,7 @@ class DataTransformer {
         // Step 1: Process pipelines and group by project (if projectMap provided) or user
         for (const apiPipeline of pipelines) {
             let userId, username, name;
+            let projectPathWithNamespace = null;
 
             if (projectMap) {
                 // Group by project instead of user
@@ -325,6 +364,7 @@ class DataTransformer {
                     userId = project.id;
                     username = project.path || project.name;
                     name = project.name;
+                    projectPathWithNamespace = project.path_with_namespace;
                 } else {
                     // Fallback if project not found
                     userId = apiPipeline.project_id;
@@ -354,7 +394,8 @@ class DataTransformer {
                 apiPipeline.finished_at,
                 apiPipeline.duration,
                 apiPipeline.web_url,
-                user
+                user,
+                projectPathWithNamespace
             );
 
             // Add to user and map
@@ -372,7 +413,7 @@ class DataTransformer {
                 throw new Error(`Data integrity error: Job ${apiJob.id} (${apiJob.name}) references unknown pipeline ${pipelineId}`);
             }
 
-            // Create job domain object
+            // Create job domain object (inherit project path from parent pipeline)
             const job = new Job(
                 apiJob.id,
                 apiJob.name,
@@ -383,7 +424,8 @@ class DataTransformer {
                 apiJob.finished_at,
                 apiJob.duration,
                 apiJob.web_url,
-                pipelineId
+                pipelineId,
+                pipeline.projectPathWithNamespace
             );
 
             // Add to pipeline

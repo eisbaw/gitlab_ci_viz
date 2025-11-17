@@ -1,13 +1,14 @@
 /**
  * D3.js GANTT Chart Implementation
  *
- * Renders hierarchical GitLab CI pipeline data as an interactive GANTT timeline.
+ * Renders GitLab CI pipeline data as an interactive GANTT timeline.
  * Replaces vis.js with pure d3.js for better performance and control.
  *
  * Features:
- * - Hierarchical grouping (Projects → Pipelines → Jobs)
+ * - Time-based sorting (newest pipelines first)
+ * - Project-based color coding (consistent colors per project)
+ * - Status indication via border styles (dashed for failed, dotted for running, etc.)
  * - Collapsible pipeline groups
- * - Status-based color coding
  * - Interactive tooltips
  * - Click to open GitLab pages
  * - Resource contention visualization
@@ -26,16 +27,20 @@ class D3GanttChart {
 
         // Layout configuration - optimized for maximum density
         this.margin = { top: 40, right: 15, bottom: 20, left: 85 };
-        this.rowHeight = 18;
-        this.barHeight = 14;
+        this.rowHeight = 12;  // Reduced for thinner jobs
+        this.barHeight = 10;  // Much thinner bars
         this.labelPadding = 6;
         this.indentWidth = 15;
+        this.minBarWidthForText = 40;  // Minimum bar width to show text label
 
         // State
         this.expandedPipelines = new Set();
         this.data = [];
         this.contentionPeriods = [];
         this.cachedRows = null; // Cache transformed rows for zoom/pan performance
+
+        // Project color mapping
+        this.projectColorCache = new Map(); // Cache project colors for consistency
 
         // D3 scales
         this.xScale = null;
@@ -171,57 +176,129 @@ class D3GanttChart {
 
     /**
      * Transform domain model to flat row structure for rendering
+     * Sorts by start time (newest first) instead of grouping by project
      */
     transformToRows(domainModel) {
         const rows = [];
 
+        // Collect all pipelines from all projects
+        const allPipelines = [];
         for (const project of domainModel) {
-            // Project group row
+            for (const pipeline of project.pipelines) {
+                allPipelines.push({
+                    pipeline: pipeline,
+                    projectName: project.getDisplayName(),
+                    projectId: project.id
+                });
+            }
+        }
+
+        // Sort pipelines by start time (newest first)
+        allPipelines.sort((a, b) => {
+            const timeA = new Date(a.pipeline.getStartTime());
+            const timeB = new Date(b.pipeline.getStartTime());
+            return timeB - timeA; // Descending (newest first)
+        });
+
+        // Create rows for each pipeline
+        for (const { pipeline, projectName, projectId } of allPipelines) {
+            const pipelineExpanded = this.expandedPipelines.has(pipeline.id);
+
+            // Pipeline bar row
+            const projectPath = pipeline.projectPathWithNamespace;
+            console.log(`Pipeline ${pipeline.id}: projectPathWithNamespace = ${projectPath}, projectId = ${projectId}`);
+
             rows.push({
-                type: 'group',
+                type: 'pipeline',
                 level: 0,
-                label: project.getDisplayName(),
-                expanded: true,
-                projectId: project.id
+                label: `P#${pipeline.id}`,
+                start: pipeline.getStartTime(),
+                end: pipeline.getEndTime(),
+                status: pipeline.status,
+                expanded: pipelineExpanded,
+                pipeline: pipeline,
+                projectId: projectId,
+                projectName: projectName,
+                projectPath: projectPath
             });
 
-            // Pipeline rows
-            for (const pipeline of project.pipelines) {
-                const pipelineExpanded = this.expandedPipelines.has(pipeline.id);
-
-                // Pipeline bar row
-                rows.push({
-                    type: 'pipeline',
-                    level: 1,
-                    label: `P#${pipeline.id}`,
-                    start: pipeline.getStartTime(),
-                    end: pipeline.getEndTime(),
-                    status: pipeline.status,
-                    expanded: pipelineExpanded,
-                    pipeline: pipeline,
-                    projectId: pipeline.projectId
-                });
-
-                // Job rows (if pipeline expanded)
-                if (pipelineExpanded) {
-                    for (const job of pipeline.jobs) {
-                        rows.push({
-                            type: 'job',
-                            level: 2,
-                            label: `${job.stage}: ${job.name}`,
-                            start: job.getStartTime(),
-                            end: job.getEndTime(),
-                            status: job.status,
-                            job: job,
-                            pipelineId: pipeline.id,
-                            projectId: pipeline.projectId
-                        });
-                    }
+            // Job rows (if pipeline expanded)
+            if (pipelineExpanded) {
+                for (const job of pipeline.jobs) {
+                    rows.push({
+                        type: 'job',
+                        level: 1,
+                        label: `${job.stage}: ${job.name}`,
+                        start: job.getStartTime(),
+                        end: job.getEndTime(),
+                        status: job.status,
+                        job: job,
+                        pipelineId: pipeline.id,
+                        projectId: projectId,
+                        projectName: projectName,
+                        projectPath: job.projectPathWithNamespace
+                    });
                 }
             }
         }
 
         return rows;
+    }
+
+    /**
+     * Get consistent color for a project based on project name
+     * Uses HSL color space for better visual distribution
+     */
+    getProjectColor(projectName) {
+        if (!projectName) {
+            return { fill: '#6c757d', stroke: '#5a6268' }; // Neutral gray for unknown projects
+        }
+
+        // Check cache first
+        if (this.projectColorCache.has(projectName)) {
+            return this.projectColorCache.get(projectName);
+        }
+
+        // Generate consistent hash from project name
+        let hash = 0;
+        for (let i = 0; i < projectName.length; i++) {
+            hash = projectName.charCodeAt(i) + ((hash << 5) - hash);
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+
+        // Use hash to generate hue (0-360)
+        const hue = Math.abs(hash % 360);
+
+        // Use moderate saturation and lightness for good visibility
+        // Saturation: 55-65% for vibrant but not garish colors
+        // Lightness: 45-55% for good contrast with white text
+        const saturation = 55 + (Math.abs(hash >> 8) % 10);
+        const lightness = 45 + (Math.abs(hash >> 16) % 10);
+
+        const fillColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+
+        // Darker stroke for border (reduce lightness by 10%)
+        const strokeColor = `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 10, 25)}%)`;
+
+        const colors = { fill: fillColor, stroke: strokeColor };
+        this.projectColorCache.set(projectName, colors);
+
+        return colors;
+    }
+
+    /**
+     * Get border style based on status (for visual status indication)
+     */
+    getStatusBorderStyle(status) {
+        const styles = {
+            'success': { width: 2, dasharray: 'none' },
+            'failed': { width: 3, dasharray: '4,2' },      // Dashed border for failed
+            'running': { width: 2, dasharray: '2,2' },      // Dotted border for running
+            'pending': { width: 2, dasharray: '6,3' },      // Long dashes for pending
+            'canceled': { width: 2, dasharray: '3,3,1,3' }, // Dash-dot for canceled
+            'cancelled': { width: 2, dasharray: '3,3,1,3' }
+        };
+        return styles[status] || { width: 2, dasharray: 'none' };
     }
 
     /**
@@ -377,7 +454,7 @@ class D3GanttChart {
     renderBars(rows, mode = 'full') {
         const barsLayer = this.chartGroup.select('.bars-layer');
 
-        const bars = barsLayer.selectAll('rect')
+        const bars = barsLayer.selectAll('rect.gantt-bar')
             .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
 
         // Fast path for zoom: only update x-positions and widths (70% fewer DOM operations)
@@ -387,6 +464,24 @@ class D3GanttChart {
                     const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return Math.max(w, 4);
                 });
+
+            // Update text labels on zoom
+            const barTexts = barsLayer.selectAll('text.gantt-bar-text')
+                .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+
+            barTexts.attr('x', d => {
+                const barX = this.xScale(new Date(d.start));
+                return barX + 4;  // Small padding from left edge
+            })
+            .text(d => {
+                const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                return this.getBarText(d, barWidth);
+            })
+            .style('display', d => {
+                const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                return barWidth >= this.minBarWidthForText ? 'block' : 'none';
+            });
+
             return;
         }
 
@@ -394,7 +489,7 @@ class D3GanttChart {
         // Enter + Update
         bars.join(
             enter => enter.append('rect')
-                .attr('class', d => `gantt-bar ${d.type}-${d.status}`)
+                .attr('class', 'gantt-bar')
                 .attr('tabindex', '0')
                 .attr('role', 'button')
                 .attr('aria-label', d => this.getBarAriaLabel(d))
@@ -405,7 +500,23 @@ class D3GanttChart {
                 })
                 .attr('width', 0)
                 .attr('height', this.barHeight)
-                .attr('rx', 3)
+                .attr('rx', 2)  // Slightly smaller radius for thinner bars
+                .attr('fill', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.fill;
+                })
+                .attr('stroke', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.stroke;
+                })
+                .attr('stroke-width', d => {
+                    const borderStyle = this.getStatusBorderStyle(d.status);
+                    return borderStyle.width;
+                })
+                .attr('stroke-dasharray', d => {
+                    const borderStyle = this.getStatusBorderStyle(d.status);
+                    return borderStyle.dasharray;
+                })
                 .on('click', (event, d) => this.handleBarClick(event, d))
                 .on('keydown', (event, d) => this.handleBarKeydown(event, d))
                 .on('mouseenter', (event, d) => this.showTooltip(event, d))
@@ -427,17 +538,118 @@ class D3GanttChart {
                     const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return Math.max(w, 4);
                 })
+                .attr('fill', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.fill;
+                })
+                .attr('stroke', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.stroke;
+                })
+                .attr('stroke-width', d => {
+                    const borderStyle = this.getStatusBorderStyle(d.status);
+                    return borderStyle.width;
+                })
+                .attr('stroke-dasharray', d => {
+                    const borderStyle = this.getStatusBorderStyle(d.status);
+                    return borderStyle.dasharray;
+                })
         );
+
+        // Render text labels on bars
+        this.renderBarLabels(rows, barsLayer);
+    }
+
+    /**
+     * Render text labels on timeline bars
+     */
+    renderBarLabels(rows, barsLayer) {
+        const barTexts = barsLayer.selectAll('text.gantt-bar-text')
+            .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+
+        barTexts.join(
+            enter => enter.append('text')
+                .attr('class', 'gantt-bar-text')
+                .attr('x', d => {
+                    const barX = this.xScale(new Date(d.start));
+                    return barX + 4;  // Small padding from left edge
+                })
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + this.rowHeight / 2;
+                })
+                .attr('dy', '0.35em')
+                .attr('font-size', '9px')
+                .attr('fill', 'white')
+                .attr('pointer-events', 'none')  // Don't block clicks on bars
+                .style('font-weight', '500')
+                .text(d => {
+                    const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return this.getBarText(d, barWidth);
+                })
+                .style('display', d => {
+                    const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return barWidth >= this.minBarWidthForText ? 'block' : 'none';
+                }),
+            update => update
+                .attr('x', d => {
+                    const barX = this.xScale(new Date(d.start));
+                    return barX + 4;
+                })
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + this.rowHeight / 2;
+                })
+                .text(d => {
+                    const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return this.getBarText(d, barWidth);
+                })
+                .style('display', d => {
+                    const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return barWidth >= this.minBarWidthForText ? 'block' : 'none';
+                })
+        );
+    }
+
+    /**
+     * Get appropriate text for bar label based on available width
+     */
+    getBarText(d, barWidth) {
+        if (barWidth < this.minBarWidthForText) {
+            return '';
+        }
+
+        // For jobs, show the job name (without stage prefix)
+        if (d.type === 'job' && d.job) {
+            const fullText = d.job.name;
+            // Estimate available characters (rough approximation: 6px per char)
+            const availableChars = Math.floor((barWidth - 8) / 6);
+
+            if (fullText.length <= availableChars) {
+                return fullText;
+            }
+
+            // Truncate with ellipsis
+            return fullText.substring(0, Math.max(1, availableChars - 1)) + '…';
+        }
+
+        // For pipelines, show pipeline ID
+        if (d.type === 'pipeline' && d.pipeline) {
+            return `P#${d.pipeline.id}`;
+        }
+
+        return '';
     }
 
     /**
      * Generate accessible label for timeline bar
      */
     getBarAriaLabel(d) {
+        const projectLabel = d.projectName ? `Project ${d.projectName}, ` : '';
         if (d.type === 'pipeline' && d.pipeline) {
-            return `Pipeline ${d.pipeline.id}, status: ${d.status}. Press Enter to open in GitLab.`;
+            return `${projectLabel}Pipeline ${d.pipeline.id}, status: ${d.status}. Press Enter to open in GitLab.`;
         } else if (d.type === 'job' && d.job) {
-            return `Job ${d.job.name}, stage: ${d.job.stage}, status: ${d.status}. Press Enter to open in GitLab.`;
+            return `${projectLabel}Job ${d.job.name}, stage: ${d.job.stage}, status: ${d.status}. Press Enter to open in GitLab.`;
         }
         return 'Timeline item';
     }
@@ -610,15 +822,22 @@ class D3GanttChart {
                         }
                     });
 
-                // Label text - using cached measurements for performance
+                // Label text - show project name for pipelines, job info for jobs
                 g.append('text')
-                    .attr('class', d => d.type === 'group' ? 'gantt-label gantt-group-label' : 'gantt-label')
+                    .attr('class', 'gantt-label')
                     .attr('x', d => d.level * this.indentWidth + (d.type === 'pipeline' ? 15 : this.labelPadding))
                     .attr('y', this.rowHeight / 2)
                     .attr('dy', '0.35em')
                     .text(d => {
-                        const maxWidth = 70 - (d.level * 10);
-                        return this.truncateText(d.label, maxWidth);
+                        if (d.type === 'pipeline') {
+                            // Show project name for pipelines
+                            const maxWidth = 70;
+                            return this.truncateText(d.projectName || `P#${d.pipeline.id}`, maxWidth);
+                        } else {
+                            // Show job info for jobs
+                            const maxWidth = 70;
+                            return this.truncateText(d.label, maxWidth);
+                        }
                     });
 
                 return g;
@@ -631,10 +850,18 @@ class D3GanttChart {
                         .attr('aria-expanded', d => d.expanded ? 'true' : 'false')
                         .text(d => d.expanded ? '▼' : '▶');
 
+                    // Update labels
                     update.select('.gantt-label')
                         .text(d => {
-                            const maxWidth = 70 - (d.level * 10);
-                            return this.truncateText(d.label, maxWidth);
+                            if (d.type === 'pipeline') {
+                                // Show project name for pipelines
+                                const maxWidth = 70;
+                                return this.truncateText(d.projectName || `P#${d.pipeline.id}`, maxWidth);
+                            } else {
+                                // Show job info for jobs
+                                const maxWidth = 70;
+                                return this.truncateText(d.label, maxWidth);
+                            }
                         });
                 })
         );
@@ -686,14 +913,19 @@ class D3GanttChart {
         let url = null;
 
         if (d.type === 'job' && d.job) {
-            url = `${this.config.gitlabUrl}/${d.projectId}/-/jobs/${d.job.id}`;
-            console.log(`Opening job ${d.job.id}`);
+            // Use project path if available, otherwise fall back to numeric ID
+            const projectIdentifier = d.projectPath || d.projectId;
+            console.log(`Opening job ${d.job.id}, projectPath: ${d.projectPath}, projectId: ${d.projectId}, using: ${projectIdentifier}`);
+            url = `${this.config.gitlabUrl}/${projectIdentifier}/-/jobs/${d.job.id}`;
         } else if (d.type === 'pipeline' && d.pipeline) {
-            url = `${this.config.gitlabUrl}/${d.projectId}/-/pipelines/${d.pipeline.id}`;
-            console.log(`Opening pipeline ${d.pipeline.id}`);
+            // Use project path if available, otherwise fall back to numeric ID
+            const projectIdentifier = d.projectPath || d.projectId;
+            console.log(`Opening pipeline ${d.pipeline.id}, projectPath: ${d.projectPath}, projectId: ${d.projectId}, using: ${projectIdentifier}`);
+            url = `${this.config.gitlabUrl}/${projectIdentifier}/-/pipelines/${d.pipeline.id}`;
         }
 
         if (url) {
+            console.log(`Final URL: ${url}`);
             window.open(url, '_blank', 'noopener,noreferrer');
         }
     }
@@ -705,16 +937,47 @@ class D3GanttChart {
         let tooltipText = '';
 
         if (d.type === 'pipeline' && d.pipeline) {
-            tooltipText = this.formatPipelineTooltip(d.pipeline);
+            tooltipText = this.formatPipelineTooltip(d.pipeline, d.projectName);
         } else if (d.type === 'job' && d.job) {
-            tooltipText = this.formatJobTooltip(d.job);
+            tooltipText = this.formatJobTooltip(d.job, d.projectName);
+        }
+
+        // Set content and make visible to measure dimensions
+        this.tooltip
+            .style('display', 'block')
+            .html(tooltipText);
+
+        // Get tooltip dimensions for proper positioning
+        const tooltipNode = this.tooltip.node();
+        const tooltipWidth = tooltipNode.offsetWidth;
+        const tooltipHeight = tooltipNode.offsetHeight;
+
+        // Position tooltip on the left side of cursor
+        // Default: 10px to the left of cursor
+        let left = event.pageX - tooltipWidth - 10;
+        let top = event.pageY - 10;
+
+        // Handle edge case: if tooltip would go off-screen on the left
+        // Fall back to right side positioning
+        const minLeftMargin = 5; // Minimum distance from left edge
+        if (left < minLeftMargin) {
+            left = event.pageX + 10; // Position on right side instead
+        }
+
+        // Handle vertical edge case: prevent tooltip from going off bottom of screen
+        const windowHeight = window.innerHeight;
+        if (top + tooltipHeight > windowHeight) {
+            top = windowHeight - tooltipHeight - 5;
+        }
+
+        // Handle vertical edge case: prevent tooltip from going off top of screen
+        if (top < 5) {
+            top = 5;
         }
 
         this.tooltip
-            .style('display', 'block')
-            .html(tooltipText)
-            .style('left', (event.pageX + 10) + 'px')
-            .style('top', (event.pageY - 10) + 'px');
+            .style('left', left + 'px')
+            .style('top', top + 'px');
     }
 
     /**
@@ -727,8 +990,11 @@ class D3GanttChart {
     /**
      * Format pipeline tooltip
      */
-    formatPipelineTooltip(pipeline) {
+    formatPipelineTooltip(pipeline, projectName) {
         const parts = [];
+        if (projectName) {
+            parts.push(`Project: ${projectName}`);
+        }
         parts.push(`Pipeline #${pipeline.id}`);
         parts.push(`Status: ${pipeline.status}`);
 
@@ -748,8 +1014,11 @@ class D3GanttChart {
     /**
      * Format job tooltip
      */
-    formatJobTooltip(job) {
+    formatJobTooltip(job, projectName) {
         const parts = [];
+        if (projectName) {
+            parts.push(`Project: ${projectName}`);
+        }
         parts.push(`Job: ${job.name}`);
         parts.push(`Stage: ${job.stage}`);
         parts.push(`Status: ${job.status}`);
