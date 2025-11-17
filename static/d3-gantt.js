@@ -655,7 +655,7 @@ class D3GanttChart {
         // Enter + Update
         bars.join(
             enter => enter.append('rect')
-                .attr('class', 'gantt-bar')
+                .attr('class', d => `gantt-bar${d.status === 'running' ? ' running' : ''}`)
                 .attr('tabindex', '0')
                 .attr('role', 'button')
                 .attr('aria-label', d => this.getBarAriaLabel(d))
@@ -702,6 +702,7 @@ class D3GanttChart {
                     return Math.max(w, 4); // Minimum 4px width
                 }),
             update => update
+                .attr('class', d => `gantt-bar${d.status === 'running' ? ' running' : ''}`)
                 .attr('aria-label', d => this.getBarAriaLabel(d))
                 .attr('x', d => this.xScale(new Date(d.start)))
                 .attr('y', (d, i) => {
