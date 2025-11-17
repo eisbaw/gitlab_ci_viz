@@ -845,6 +845,11 @@
         .contention-medium { fill: rgba(255, 152, 0, 0.20); stroke: none; }
         .contention-high { fill: rgba(244, 67, 54, 0.25); stroke: none; }
         .contention-critical { fill: rgba(183, 28, 28, 0.30); stroke: none; }
+
+        /* Pipeline background boxes for expanded pipelines */
+        .pipeline-background {
+            pointer-events: none; /* Don't intercept mouse/click events */
+        }
     </style>
     <!-- CONFIG object injected here by serve.py as <script> tag -->
 </head>

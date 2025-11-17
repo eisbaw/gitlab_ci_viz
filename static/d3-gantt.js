@@ -95,6 +95,7 @@ class D3GanttChart {
         // Create layers (order matters for z-index)
         this.chartGroup.append('g').attr('class', 'grid-layer');
         this.chartGroup.append('g').attr('class', 'contention-layer');
+        this.chartGroup.append('g').attr('class', 'pipeline-backgrounds-layer');
         this.chartGroup.append('g').attr('class', 'bars-layer');
         this.chartGroup.append('g').attr('class', 'current-time-layer');
         this.chartGroup.append('g').attr('class', 'axis-layer');
@@ -169,6 +170,7 @@ class D3GanttChart {
         // Render layers
         this.renderGrid(width, height);
         this.renderContention(width);
+        this.renderPipelineBackgrounds(rows);
         this.renderBars(rows);
         this.renderCurrentTime(height);
         this.renderAxis(width);
@@ -338,10 +340,12 @@ class D3GanttChart {
 
         this.zoomRafId = requestAnimationFrame(() => {
             // Re-render affected layers using cached rows for performance
+            const rows = this.cachedRows || this.transformToRows(this.data);
             this.renderGrid(this.getChartWidth(), this.getChartHeight());
             this.renderContention(this.getChartWidth());
+            this.renderPipelineBackgrounds(rows);
             // Use zoom mode for minimal DOM updates (only x-positions and widths)
-            this.renderBars(this.cachedRows || this.transformToRows(this.data), 'zoom');
+            this.renderBars(rows, 'zoom');
             this.renderCurrentTime(this.getChartHeight());
             this.renderAxis(this.getChartWidth());
             this.zoomRafId = null;
@@ -457,13 +461,127 @@ class D3GanttChart {
     }
 
     /**
+     * Render background boxes for expanded pipelines
+     */
+    renderPipelineBackgrounds(rows) {
+        const backgroundsLayer = this.chartGroup.select('.pipeline-backgrounds-layer');
+
+        // Find all expanded pipelines and their jobs
+        const expandedPipelines = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.type === 'pipeline' && row.expanded) {
+                // Find all job rows for this pipeline
+                const jobs = [];
+                let minTime = new Date(row.start);
+                let maxTime = new Date(row.end);
+                let firstJobIndex = i + 1;
+                let lastJobIndex = i;
+
+                // Collect all jobs for this pipeline
+                for (let j = i + 1; j < rows.length && rows[j].type === 'job'; j++) {
+                    if (rows[j].pipelineId === row.pipeline.id) {
+                        jobs.push(rows[j]);
+                        lastJobIndex = j;
+
+                        // Update time range to encompass all jobs
+                        const jobStart = new Date(rows[j].start);
+                        const jobEnd = new Date(rows[j].end);
+                        if (jobStart < minTime) minTime = jobStart;
+                        if (jobEnd > maxTime) maxTime = jobEnd;
+                    }
+                }
+
+                if (jobs.length > 0) {
+                    expandedPipelines.push({
+                        pipeline: row.pipeline,
+                        pipelineRowIndex: i,
+                        firstJobIndex: firstJobIndex,
+                        lastJobIndex: lastJobIndex,
+                        minTime: minTime,
+                        maxTime: maxTime,
+                        projectName: row.projectName
+                    });
+                }
+            }
+        }
+
+        // Render background boxes
+        const backgrounds = backgroundsLayer.selectAll('rect.pipeline-background')
+            .data(expandedPipelines, d => d.pipeline.id);
+
+        backgrounds.join(
+            enter => enter.append('rect')
+                .attr('class', 'pipeline-background')
+                .attr('x', d => this.xScale(d.minTime))
+                .attr('y', d => {
+                    // Position at first job row
+                    return this.yScale(d.firstJobIndex) - 2; // Small padding above
+                })
+                .attr('width', d => {
+                    const w = this.xScale(d.maxTime) - this.xScale(d.minTime);
+                    return Math.max(w, 4);
+                })
+                .attr('height', d => {
+                    // Height spans all job rows plus padding
+                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+                    return this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4; // Small padding below
+                })
+                .attr('rx', 3)
+                .attr('fill', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.fill;
+                })
+                .attr('fill-opacity', 0.08)
+                .attr('stroke', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.stroke;
+                })
+                .attr('stroke-width', 1.5)
+                .attr('stroke-opacity', 0.25)
+                .attr('stroke-dasharray', '4,4')
+                .attr('pointer-events', 'none'), // Don't intercept mouse events
+            update => update
+                .attr('x', d => this.xScale(d.minTime))
+                .attr('y', d => {
+                    return this.yScale(d.firstJobIndex) - 2;
+                })
+                .attr('width', d => {
+                    const w = this.xScale(d.maxTime) - this.xScale(d.minTime);
+                    return Math.max(w, 4);
+                })
+                .attr('height', d => {
+                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+                    return this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
+                })
+                .attr('fill', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.fill;
+                })
+                .attr('stroke', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.stroke;
+                })
+        );
+    }
+
+    /**
      * Render timeline bars (pipelines and jobs)
      */
     renderBars(rows, mode = 'full') {
         const barsLayer = this.chartGroup.select('.bars-layer');
 
+        // Filter out expanded pipeline bars (they're shown as background boxes)
+        // but keep collapsed pipeline bars and all job bars
+        const barsToRender = rows.filter(r => {
+            if (r.type === 'group') return false;
+            if (r.type === 'pipeline' && r.expanded) return false; // Skip expanded pipeline bars
+            return true;
+        });
+
         const bars = barsLayer.selectAll('rect.gantt-bar')
-            .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+            .data(barsToRender, (d, i) => `${d.type}-${i}`);
 
         // Fast path for zoom: only update x-positions and widths (70% fewer DOM operations)
         if (mode === 'zoom') {
@@ -473,9 +591,9 @@ class D3GanttChart {
                     return Math.max(w, 4);
                 });
 
-            // Update text labels on zoom
+            // Update text labels on zoom (only for bars that are actually rendered)
             const barTexts = barsLayer.selectAll('text.gantt-bar-text')
-                .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+                .data(barsToRender, (d, i) => `${d.type}-${i}`);
 
             barTexts.attr('x', d => {
                 const barX = this.xScale(new Date(d.start));
@@ -589,8 +707,15 @@ class D3GanttChart {
      * Render text labels on timeline bars
      */
     renderBarLabels(rows, barsLayer) {
+        // Filter to match bars being rendered (exclude expanded pipelines)
+        const barsToRender = rows.filter(r => {
+            if (r.type === 'group') return false;
+            if (r.type === 'pipeline' && r.expanded) return false;
+            return true;
+        });
+
         const barTexts = barsLayer.selectAll('text.gantt-bar-text')
-            .data(rows.filter(r => r.type !== 'group'), (d, i) => `${d.type}-${i}`);
+            .data(barsToRender, (d, i) => `${d.type}-${i}`);
 
         barTexts.join(
             enter => enter.append('text')
