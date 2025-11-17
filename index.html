@@ -1247,10 +1247,7 @@
                     return {
                         filters: new Set(filters),
                         jobSearch: params.get('jobSearch') || '',
-                        duration: params.get('duration') || '6h',
-                        zoom: parseFloat(params.get('zoom')) || null,
-                        panX: parseFloat(params.get('panX')) || null,
-                        panY: parseFloat(params.get('panY')) || null
+                        duration: params.get('duration') || '6h'
                     };
                 }
 
@@ -1258,10 +1255,7 @@
                 return {
                     filters: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
                     jobSearch: '',
-                    duration: params.get('duration') || '6h',
-                    zoom: null,
-                    panX: null,
-                    panY: null
+                    duration: params.get('duration') || '6h'
                 };
             },
 
@@ -1289,17 +1283,6 @@
                 // Save duration (only if not default)
                 if (state.duration && state.duration !== '6h') {
                     params.set('duration', state.duration);
-                }
-
-                // Save zoom/pan state
-                if (state.zoom !== null && state.zoom !== 1) {
-                    params.set('zoom', state.zoom.toFixed(3));
-                }
-                if (state.panX !== null && state.panX !== 0) {
-                    params.set('panX', state.panX.toFixed(2));
-                }
-                if (state.panY !== null && state.panY !== 0) {
-                    params.set('panY', state.panY.toFixed(2));
                 }
 
                 // Update URL without reload
@@ -1357,10 +1340,7 @@
                 URLStateManager.debouncedSave({
                     filters: this.active,
                     jobSearch: JobSearchState.searchTerm,
-                    duration: DurationState.current,
-                    zoom: ganttChart?.currentTransform?.k || null,
-                    panX: ganttChart?.currentTransform?.x || null,
-                    panY: ganttChart?.currentTransform?.y || null
+                    duration: DurationState.current
                 });
             }
         };
@@ -1405,10 +1385,7 @@
                 URLStateManager.debouncedSave({
                     filters: FilterState.active,
                     jobSearch: this.searchTerm,
-                    duration: DurationState.current,
-                    zoom: ganttChart?.currentTransform?.k || null,
-                    panX: ganttChart?.currentTransform?.x || null,
-                    panY: ganttChart?.currentTransform?.y || null
+                    duration: DurationState.current
                 });
             }
         };
@@ -1442,10 +1419,7 @@
                 URLStateManager.debouncedSave({
                     filters: FilterState.active,
                     jobSearch: JobSearchState.searchTerm,
-                    duration: this.current,
-                    zoom: ganttChart?.currentTransform?.k || null,
-                    panX: ganttChart?.currentTransform?.x || null,
-                    panY: ganttChart?.currentTransform?.y || null
+                    duration: this.current
                 });
             }
         };
@@ -1844,9 +1818,6 @@
             }
             if (urlState.duration && urlState.duration !== '6h') {
                 console.log('Loaded duration from URL:', urlState.duration);
-            }
-            if (urlState.zoom !== null) {
-                console.log('Loaded zoom state from URL:', urlState.zoom);
             }
 
             checkboxes.forEach(checkbox => {
@@ -2282,14 +2253,7 @@
             initializeKeyboardHelp();
 
             // Fetch and render data
-            fetchAndRender().then(() => {
-                // Apply saved zoom state after initial render (if any)
-                if (urlState.zoom !== null && urlState.panX !== null && urlState.panY !== null) {
-                    setTimeout(() => {
-                        ganttChart.applyZoomFromState(urlState.zoom, urlState.panX, urlState.panY);
-                    }, 100);
-                }
-            });
+            fetchAndRender();
 
             // Schedule auto-refresh if enabled
             scheduleAutoRefresh();
