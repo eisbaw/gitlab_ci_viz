@@ -401,19 +401,32 @@ class D3GanttChart {
      * Initialize zoom and pan behavior
      */
     initializeZoom(width, height) {
-        // Create zoom behavior
+        // Create zoom behavior with custom filter
         this.zoom = d3.zoom()
             .scaleExtent([0.5, 20]) // Allow 2x zoom out to 20x zoom in
             .translateExtent([[0, 0], [width, height]]) // Limit panning to chart bounds
+            .filter((event) => {
+                // Allow drag to pan
+                if (event.type === 'mousedown') return true;
+
+                // For wheel events: only zoom on Ctrl+wheel or horizontal scroll
+                if (event.type === 'wheel') {
+                    // Ctrl+wheel = zoom
+                    if (event.ctrlKey) return true;
+
+                    // Horizontal scroll = zoom
+                    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return true;
+
+                    // Vertical scroll = page scroll (don't capture)
+                    return false;
+                }
+
+                return true; // Allow other events (touch, etc.)
+            })
             .on('zoom', (event) => this.handleZoom(event));
 
         // Apply zoom to chart group
         this.svg.call(this.zoom);
-
-        // Prevent default scrolling on the visualization container
-        this.svg.on('wheel.zoom', (event) => {
-            event.preventDefault();
-        });
     }
 
     /**
