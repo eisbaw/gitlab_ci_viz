@@ -103,6 +103,7 @@ class D3GanttChart {
         this.chartGroup.append('g').attr('class', 'grid-layer');
         this.chartGroup.append('g').attr('class', 'contention-layer');
         this.chartGroup.append('g').attr('class', 'pipeline-backgrounds-layer');
+        this.chartGroup.append('g').attr('class', 'pipeline-click-overlay-layer'); // Clickable overlay behind jobs
         this.chartGroup.append('g').attr('class', 'bars-layer');
         this.chartGroup.append('g').attr('class', 'avatars-layer');
         this.chartGroup.append('g').attr('class', 'current-time-layer');
@@ -678,7 +679,7 @@ class D3GanttChart {
                 .attr('stroke-width', 1.5)
                 .attr('stroke-opacity', 0.25)
                 .attr('stroke-dasharray', '4,4')
-                .attr('pointer-events', 'none'), // Don't intercept mouse events
+                .attr('pointer-events', 'none'),
             update => update
                 .attr('x', d => this.xScale(d.minTime))
                 .attr('y', d => {
@@ -700,6 +701,7 @@ class D3GanttChart {
                     const colors = this.getProjectColor(d.projectName);
                     return colors.stroke;
                 })
+                .attr('pointer-events', 'none')
         );
 
         // Render background labels for expanded pipelines (multi-line text)
@@ -777,6 +779,53 @@ class D3GanttChart {
 
         mergedGroups.selectAll('.pipeline-label-ref')
             .text(d => d.pipeline.ref || '');
+
+        // Render invisible clickable overlays on top of everything
+        const overlayLayer = this.chartGroup.select('.pipeline-click-overlay-layer');
+        const overlays = overlayLayer.selectAll('rect.pipeline-click-overlay')
+            .data(expandedPipelines, d => d.pipeline.id);
+
+        overlays.join(
+            enter => enter.append('rect')
+                .attr('class', 'pipeline-click-overlay')
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .attr('cursor', 'pointer')
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    window.open(d.pipeline.webUrl, '_blank');
+                })
+                .on('mouseenter', function(event, d) {
+                    // Highlight the corresponding background box
+                    const bg = backgroundsLayer.selectAll('rect.pipeline-background')
+                        .filter(bgData => bgData.pipeline.id === d.pipeline.id);
+                    bg.attr('fill-opacity', 0.15)
+                        .attr('stroke-opacity', 0.5);
+                })
+                .on('mouseleave', function(event, d) {
+                    // Restore the corresponding background box
+                    const bg = backgroundsLayer.selectAll('rect.pipeline-background')
+                        .filter(bgData => bgData.pipeline.id === d.pipeline.id);
+                    bg.attr('fill-opacity', 0.08)
+                        .attr('stroke-opacity', 0.25);
+                })
+                .append('title')
+                    .text(d => `Click to open pipeline ${d.pipeline.id} in GitLab`),
+            update => update
+        );
+
+        // Position the clickable overlays to match the background boxes
+        overlays
+            .attr('x', d => this.xScale(d.minTime))
+            .attr('y', d => this.yScale(d.firstJobIndex) - 2)
+            .attr('width', d => {
+                const w = this.xScale(d.maxTime) - this.xScale(d.minTime);
+                return Math.max(w, 4);
+            })
+            .attr('height', d => {
+                const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+                return this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
+            });
     }
 
     /**
