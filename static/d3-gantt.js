@@ -88,10 +88,7 @@ class D3GanttChart {
             .attr('aria-label', 'GitLab CI Pipeline Timeline')
             .style('display', 'block');
 
-        // Add title and description for screen readers
-        this.svg.append('title')
-            .text('GitLab CI Pipeline Timeline');
-
+        // Add description for screen readers (no title to avoid interfering with element-specific tooltips)
         this.svg.append('desc')
             .text('Interactive timeline showing GitLab CI pipelines and jobs. Use Tab to navigate, Enter or Space to open items in GitLab.');
 
@@ -1180,7 +1177,7 @@ class D3GanttChart {
         const avatarGroups = avatarsLayer.selectAll('g.avatar-container')
             .data(avatarData, (d, i) => `${d.row.type}-${d.rowIndex}`);
 
-        avatarGroups.join(
+        const merged = avatarGroups.join(
             enter => {
                 const g = enter.append('g')
                     .attr('class', 'avatar-container')
@@ -1233,10 +1230,6 @@ class D3GanttChart {
                     }
                 });
 
-                // Add tooltip
-                g.append('title')
-                    .text(d => d.name || d.username);
-
                 return g;
             },
             update => update
@@ -1246,6 +1239,22 @@ class D3GanttChart {
                     return `translate(${barX + this.avatarOffset}, ${barY})`;
                 })
         );
+
+        // Add/update tooltips on merged selection (both enter and update)
+        merged.each(function(d) {
+            const group = d3.select(this);
+
+            // Remove existing title if present
+            group.select('title').remove();
+
+            // Add fresh tooltip with username
+            const tooltipText = d.username && d.name
+                ? `${d.name} (@${d.username})`
+                : d.name || d.username || 'Unknown';
+
+            group.append('title')
+                .text(tooltipText);
+        });
     }
 
     /**
