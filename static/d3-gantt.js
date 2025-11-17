@@ -899,7 +899,6 @@ class D3GanttChart {
             }
 
             const avatarUrl = user?.avatar_url || null;
-            console.log(`Avatar for ${row.type} ${row.pipeline?.id || row.job?.id}: user=${user?.username}, avatar_url=${avatarUrl}`);
 
             return {
                 rowIndex: rowIndex,
@@ -934,8 +933,6 @@ class D3GanttChart {
                         const optimizedUrl = d.avatarUrl.includes('?')
                             ? `${d.avatarUrl}&width=${this.avatarSize * 2}`
                             : `${d.avatarUrl}?width=${this.avatarSize * 2}`;
-
-                        console.log(`Rendering avatar image: ${optimizedUrl}`);
 
                         // Render avatar image
                         group.append('image')
