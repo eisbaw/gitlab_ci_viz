@@ -47,6 +47,9 @@ class D3GanttChart {
         // Project color mapping
         this.projectColorCache = new Map(); // Cache project colors for consistency
 
+        // Runner color mapping
+        this.runnerColorCache = new Map(); // Cache runner colors for consistency
+
         // D3 scales
         this.xScale = null;
         this.yScale = null;
@@ -318,6 +321,62 @@ class D3GanttChart {
         this.projectColorCache.set(projectName, colors);
 
         return colors;
+    }
+
+    /**
+     * Get consistent matte color for a runner
+     * @param {string} runnerName - Runner name/description to hash
+     * @returns {Object} Object with fill and stroke colors
+     *
+     * Uses 16-bit hash truncation mapped to HSV hue with matte saturation
+     */
+    getRunnerColor(runnerName) {
+        if (!runnerName) {
+            return { fill: '#6c757d', stroke: '#5a6268' }; // Neutral gray for unknown runners
+        }
+
+        // Check cache first
+        if (this.runnerColorCache.has(runnerName)) {
+            return this.runnerColorCache.get(runnerName);
+        }
+
+        // Hash runner name using simple string hash
+        let hash = 0;
+        for (let i = 0; i < runnerName.length; i++) {
+            hash = runnerName.charCodeAt(i) + ((hash << 5) - hash);
+        }
+
+        // Truncate to 16-bit number (0-65535)
+        const hash16 = Math.abs(hash) & 0xFFFF;
+
+        // Scale to hue (0-360 degrees)
+        const hue = (hash16 / 65535) * 360;
+
+        // Matte appearance: low saturation, moderate lightness
+        const saturation = 35;  // Low saturation for matte look
+        const lightness = 55;   // Slightly lighter for better visibility
+
+        const fillColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        const strokeColor = `hsl(${hue}, ${saturation}%, ${Math.max(lightness - 10, 30)}%)`;
+
+        const colors = { fill: fillColor, stroke: strokeColor };
+        this.runnerColorCache.set(runnerName, colors);
+
+        return colors;
+    }
+
+    /**
+     * Get runner name from job data
+     * @param {Object} d - Row data object
+     * @returns {string|null} Runner name/description or null
+     */
+    getRunnerName(d) {
+        if (d.type !== 'job' || !d.job || !d.job.runner) {
+            return null;
+        }
+
+        // Use description if available (more descriptive), otherwise use name
+        return d.job.runner.description || d.job.runner.name || null;
     }
 
     /**
@@ -713,6 +772,15 @@ class D3GanttChart {
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }
+                    // Jobs: use runner color if available, otherwise project color
+                    if (d.type === 'job') {
+                        const runnerName = this.getRunnerName(d);
+                        if (runnerName) {
+                            const colors = this.getRunnerColor(runnerName);
+                            return colors.fill;
+                        }
+                    }
+                    // Pipelines or jobs without runner: use project color
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
@@ -766,6 +834,15 @@ class D3GanttChart {
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }
+                    // Jobs: use runner color if available, otherwise project color
+                    if (d.type === 'job') {
+                        const runnerName = this.getRunnerName(d);
+                        if (runnerName) {
+                            const colors = this.getRunnerColor(runnerName);
+                            return colors.fill;
+                        }
+                    }
+                    // Pipelines or jobs without runner: use project color
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
