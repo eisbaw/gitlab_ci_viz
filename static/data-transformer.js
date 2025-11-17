@@ -102,8 +102,10 @@ class Pipeline {
      * @param {GroupKey} group - The group this pipeline belongs to for display (project or user)
      * @param {string|null} projectPathWithNamespace - Project path (e.g., 'group/project-name')
      * @param {Object|null} triggeringUser - The actual GitLab user who triggered this pipeline (from API)
+     * @param {string|null} ref - Git ref (branch/tag name)
+     * @param {string|null} sha - Git commit SHA
      */
-    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, group, projectPathWithNamespace = null, triggeringUser = null) {
+    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, group, projectPathWithNamespace = null, triggeringUser = null, ref = null, sha = null) {
         // Validate required fields
         if (!id || !projectId || !status || !createdAt) {
             throw new Error(`Invalid pipeline data: missing required fields (id=${id}, projectId=${projectId}, status=${status}, createdAt=${createdAt})`);
@@ -131,6 +133,8 @@ class Pipeline {
         this.webUrl = webUrl;
         this.group = group; // The group this pipeline belongs to (project or user, for display purposes)
         this.triggeringUser = triggeringUser; // Actual GitLab user who triggered this pipeline
+        this.ref = ref; // Git ref (branch/tag name)
+        this.sha = sha; // Git commit SHA
         this.jobs = [];
     }
 
@@ -436,7 +440,9 @@ class DataTransformer {
                 apiPipeline.web_url,
                 group,
                 projectPathWithNamespace,
-                apiPipeline.user || null  // Store actual triggering user from API
+                apiPipeline.user || null,  // Store actual triggering user from API
+                apiPipeline.ref || null,   // Git ref (branch/tag)
+                apiPipeline.sha || null    // Git commit SHA
             );
 
             // Add to group and map

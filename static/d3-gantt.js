@@ -702,52 +702,81 @@ class D3GanttChart {
                 })
         );
 
-        // Render background labels for expanded pipelines
-        const labels = backgroundsLayer.selectAll('text.pipeline-background-label')
+        // Render background labels for expanded pipelines (multi-line text)
+        const labelGroups = backgroundsLayer.selectAll('g.pipeline-background-label-group')
             .data(expandedPipelines, d => d.pipeline.id);
 
-        labels.join(
-            enter => enter.append('text')
-                .attr('class', 'pipeline-background-label')
-                .attr('x', d => this.xScale(d.minTime) + 10) // 10px padding from left edge
-                .attr('y', d => {
-                    // Position in vertical middle of the background box
-                    const firstJobY = this.yScale(d.firstJobIndex) - 2;
-                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
-                    const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
-                    return firstJobY + boxHeight / 2;
-                })
-                .attr('dominant-baseline', 'middle')
-                .attr('text-anchor', 'start')
-                .attr('font-size', '24px')
-                .attr('font-weight', '600')
-                .attr('fill', d => {
-                    const colors = this.getProjectColor(d.projectName);
-                    return colors.stroke;
-                })
-                .attr('fill-opacity', 0.15)
-                .attr('pointer-events', 'none')
-                .text(d => {
-                    const project = d.projectName || 'Unknown';
-                    const sha = d.pipeline.sha ? d.pipeline.sha.substring(0, 8) : 'N/A';
-                    const ref = d.pipeline.ref || 'N/A';
-                    return `${project} • ${sha} • ${ref}`;
-                }),
+        const mergedGroups = labelGroups.join(
+            enter => {
+                const g = enter.append('g')
+                    .attr('class', 'pipeline-background-label-group')
+                    .attr('pointer-events', 'none');
+
+                // Add three text lines: project, sha, ref
+                g.append('text')
+                    .attr('class', 'pipeline-label-project')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('text-anchor', 'end')
+                    .attr('font-size', '24px')
+                    .attr('font-weight', '600')
+                    .attr('fill', d => {
+                        const colors = this.getProjectColor(d.projectName);
+                        return colors.stroke;
+                    })
+                    .attr('fill-opacity', 0.25);
+
+                g.append('text')
+                    .attr('class', 'pipeline-label-sha')
+                    .attr('x', 0)
+                    .attr('y', 24)
+                    .attr('text-anchor', 'end')
+                    .attr('font-size', '24px')
+                    .attr('font-weight', '600')
+                    .attr('fill', d => {
+                        const colors = this.getProjectColor(d.projectName);
+                        return colors.stroke;
+                    })
+                    .attr('fill-opacity', 0.25);
+
+                g.append('text')
+                    .attr('class', 'pipeline-label-ref')
+                    .attr('x', 0)
+                    .attr('y', 48)
+                    .attr('text-anchor', 'end')
+                    .attr('font-size', '24px')
+                    .attr('font-weight', '600')
+                    .attr('fill', d => {
+                        const colors = this.getProjectColor(d.projectName);
+                        return colors.stroke;
+                    })
+                    .attr('fill-opacity', 0.25);
+
+                return g;
+            },
             update => update
-                .attr('x', d => this.xScale(d.minTime) + 10)
-                .attr('y', d => {
-                    const firstJobY = this.yScale(d.firstJobIndex) - 2;
-                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
-                    const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
-                    return firstJobY + boxHeight / 2;
-                })
-                .text(d => {
-                    const project = d.projectName || 'Unknown';
-                    const sha = d.pipeline.sha ? d.pipeline.sha.substring(0, 8) : 'N/A';
-                    const ref = d.pipeline.ref || 'N/A';
-                    return `${project} • ${sha} • ${ref}`;
-                })
         );
+
+        // Position the label groups (for both enter and update)
+        mergedGroups.attr('transform', d => {
+            const boxWidth = this.xScale(d.maxTime) - this.xScale(d.minTime);
+            const x = this.xScale(d.minTime) + boxWidth - 10; // 10px padding from right edge
+            const firstJobY = this.yScale(d.firstJobIndex) - 2;
+            const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+            const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
+            const y = firstJobY + boxHeight / 2 - 24; // Center vertically, offset up by 24px (one line height)
+            return `translate(${x}, ${y})`;
+        });
+
+        // Update text content (for both enter and update)
+        mergedGroups.selectAll('.pipeline-label-project')
+            .text(d => d.projectName || 'Unknown');
+
+        mergedGroups.selectAll('.pipeline-label-sha')
+            .text(d => d.pipeline.sha ? d.pipeline.sha.substring(0, 8) : '');
+
+        mergedGroups.selectAll('.pipeline-label-ref')
+            .text(d => d.pipeline.ref || '');
     }
 
     /**
