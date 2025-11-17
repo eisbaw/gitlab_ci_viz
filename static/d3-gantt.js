@@ -1192,12 +1192,19 @@ class D3GanttChart {
                     const group = d3.select(nodes[i]);
 
                     if (d.avatarUrl) {
+                        // Convert relative URLs to absolute by prepending GitLab base URL
+                        let baseUrl = d.avatarUrl;
+                        if (baseUrl.startsWith('/') && this.config.gitlabUrl) {
+                            baseUrl = this.config.gitlabUrl + baseUrl;
+                        }
+
                         // Add width parameter to optimize image size
-                        const optimizedUrl = d.avatarUrl.includes('?')
-                            ? `${d.avatarUrl}&width=${this.avatarSize * 2}`
-                            : `${d.avatarUrl}?width=${this.avatarSize * 2}`;
+                        const optimizedUrl = baseUrl.includes('?')
+                            ? `${baseUrl}&width=${this.avatarSize * 2}`
+                            : `${baseUrl}?width=${this.avatarSize * 2}`;
 
                         // Render avatar image
+                        const chart = this;  // Capture chart instance for error handler
                         group.append('image')
                             .attr('class', 'avatar-image')
                             .attr('xlink:href', optimizedUrl)
@@ -1208,11 +1215,12 @@ class D3GanttChart {
                             .on('error', function(event) {
                                 console.error(`Avatar image failed to load: ${optimizedUrl}`, event);
                                 // Fallback: replace with initials circle if image fails to load
-                                d3.select(this).remove();
-                                const parent = d3.select(this.parentNode);
-                                const initials = this.getInitials(d.name);
-                                this.renderFallbackAvatar(parent, initials);
-                            }.bind(this));
+                                const imageElement = this;
+                                d3.select(imageElement).remove();
+                                const parent = d3.select(imageElement.parentNode);
+                                const initials = chart.getInitials(d.name);
+                                chart.renderFallbackAvatar(parent, initials);
+                            });
 
                         // Add border circle
                         group.append('circle')
@@ -1224,9 +1232,19 @@ class D3GanttChart {
                             .attr('stroke', '#dee2e6')
                             .attr('stroke-width', 1);
                     } else {
-                        // No avatar URL: render fallback (initials)
+                        // No avatar URL or relative URL (won't load from localhost): render fallback (initials)
                         const initials = this.getInitials(d.name);
                         this.renderFallbackAvatar(group, initials);
+
+                        // Add border circle for fallback avatars
+                        group.append('circle')
+                            .attr('class', 'avatar-border')
+                            .attr('cx', this.avatarSize / 2)
+                            .attr('cy', this.avatarSize / 2)
+                            .attr('r', this.avatarSize / 2)
+                            .attr('fill', 'none')
+                            .attr('stroke', '#dee2e6')
+                            .attr('stroke-width', 1);
                     }
                 });
 
