@@ -554,7 +554,10 @@ def create_handler(config_js, token):
 
         def do_GET(self):
             """Handle GET requests, injecting config into index.html."""
-            if self.path == "/" or self.path == "/index.html":
+            # Parse path to extract just the path component (without query string)
+            parsed_path = urlparse(self.path).path
+
+            if parsed_path == "/" or parsed_path == "/index.html":
                 # Serve index.html with injected config
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
