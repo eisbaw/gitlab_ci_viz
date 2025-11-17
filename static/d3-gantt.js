@@ -344,10 +344,12 @@ class D3GanttChart {
         let hash = 0;
         for (let i = 0; i < runnerName.length; i++) {
             hash = runnerName.charCodeAt(i) + ((hash << 5) - hash);
+            hash = hash | 0; // Convert to 32-bit integer
         }
 
-        // Truncate to 16-bit number (0-65535)
-        const hash16 = Math.abs(hash) & 0xFFFF;
+        // Ensure positive and truncate to 16-bit number (0-65535)
+        // Use unsigned right shift to ensure positive value
+        const hash16 = (hash >>> 16) ^ (hash & 0xFFFF);
 
         // Scale to hue (0-360 degrees)
         const hue = (hash16 / 65535) * 360;
