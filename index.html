@@ -882,7 +882,10 @@
 
         /* Avatar styles */
         .avatar-container {
-            /* Allow pointer events to enable tooltips on avatars */
+            /* Explicitly enable pointer events - avatars need to receive hover/click
+               events for tooltips to work, overriding pointer-events:none from
+               parent .pipeline-background element */
+            pointer-events: auto;
         }
         .avatar-image {
             shape-rendering: auto;

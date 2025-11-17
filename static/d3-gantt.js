@@ -281,6 +281,87 @@ class D3GanttChart {
     }
 
     /**
+     * Extract user object from a row for avatar display.
+     *
+     * Implements a clear fallback strategy for determining which user to associate
+     * with a pipeline or job row. The fallback logic prioritizes:
+     *
+     * For pipeline rows:
+     *   1. pipeline.triggeringUser (actual GitLab user who triggered the pipeline)
+     *   2. pipeline.group (may be project or user, used as last resort)
+     *
+     * For job rows:
+     *   1. job.user (user who manually triggered/retried the job)
+     *   2. pipeline.triggeringUser (if job has no user, inherit from pipeline)
+     *   3. pipeline.group (last resort fallback)
+     *
+     * For all other row types:
+     *   - Returns null (no user association)
+     *
+     * @param {Object} row - Row object from transformData()
+     * @param {string} row.type - Row type: 'pipeline', 'job', or 'group'
+     * @param {Pipeline} [row.pipeline] - Pipeline object (for pipeline/job rows)
+     * @param {Job} [row.job] - Job object (for job rows)
+     *
+     * @returns {Object|null} User object with expected fields, or null if no user found
+     *
+     * Expected user object structure:
+     * @typedef {Object} UserObject
+     * @property {number} id - User ID
+     * @property {string} username - Username (login name)
+     * @property {string} name - Display name (human-readable)
+     * @property {string|null} avatar_url - URL to user's avatar image (may be null)
+     *
+     * Design rationale:
+     * - Pure function: no side effects, same input always produces same output
+     * - Explicit handling: all row types have explicit cases (fail fast on unknown types)
+     * - Testable: can be tested independently without rendering code
+     * - Composable: can be reused anywhere user extraction is needed
+     * - Clear fallback chain: easy to understand priority order
+     */
+    getUserForRow(row) {
+        // Handle pipeline rows
+        if (row.type === 'pipeline') {
+            if (!row.pipeline) {
+                // Log warning for malformed data but don't crash
+                console.warn('Pipeline row missing pipeline object:', row);
+                return null;
+            }
+            // Prefer actual triggering user over group (which may be a project)
+            return row.pipeline.triggeringUser || row.pipeline.group || null;
+        }
+
+        // Handle job rows
+        if (row.type === 'job') {
+            if (!row.job) {
+                // Log warning for malformed data but don't crash
+                console.warn('Job row missing job object:', row);
+                return null;
+            }
+            // Priority: job's user > pipeline's triggering user > pipeline's group
+            if (row.job.user) {
+                return row.job.user;
+            }
+            if (row.pipeline?.triggeringUser) {
+                return row.pipeline.triggeringUser;
+            }
+            if (row.pipeline?.group) {
+                return row.pipeline.group;
+            }
+            return null;
+        }
+
+        // Handle group rows (no user association)
+        if (row.type === 'group') {
+            return null;
+        }
+
+        // Unknown row type - fail fast with clear error
+        console.error('Unknown row type for user extraction:', row.type, row);
+        return null;
+    }
+
+    /**
      * Get consistent color for a project based on project name
      * Uses HSL color space for better visual distribution
      */
@@ -1147,20 +1228,10 @@ class D3GanttChart {
             return true;
         });
 
-        // Extract avatar data from rows
+        // Extract avatar data from rows using pure function
         const avatarData = barsWithAvatars.map((row, i) => {
             const rowIndex = rows.indexOf(row);
-            let user = null;
-
-            if (row.type === 'pipeline' && row.pipeline) {
-                // Use triggeringUser (actual GitLab user) instead of group (which may be project)
-                user = row.pipeline.triggeringUser || row.pipeline.group;
-            } else if (row.type === 'job' && row.job) {
-                // Jobs may have their own user field (who triggered the manual job)
-                // Fall back to pipeline's triggering user if not available
-                user = row.job.user || (row.pipeline ? row.pipeline.triggeringUser : null) || (row.pipeline ? row.pipeline.group : null);
-            }
-
+            const user = this.getUserForRow(row);
             const avatarUrl = user?.avatar_url || null;
 
             return {
@@ -1192,16 +1263,30 @@ class D3GanttChart {
                     const group = d3.select(nodes[i]);
 
                     if (d.avatarUrl) {
-                        // Convert relative URLs to absolute by prepending GitLab base URL
-                        let baseUrl = d.avatarUrl;
-                        if (baseUrl.startsWith('/') && this.config.gitlabUrl) {
-                            baseUrl = this.config.gitlabUrl + baseUrl;
-                        }
+                        // Build absolute avatar URL with proper URL API
+                        let optimizedUrl;
+                        try {
+                            optimizedUrl = this.buildAvatarUrl(d.avatarUrl);
+                        } catch (error) {
+                            console.error(`Failed to construct avatar URL for ${d.name}: ${error.message}`, {
+                                avatarUrl: d.avatarUrl,
+                                gitlabUrl: this.config.gitlabUrl
+                            });
+                            // Fall back to initials on URL construction failure
+                            const initials = this.getInitials(d.name);
+                            this.renderFallbackAvatar(group, initials);
 
-                        // Add width parameter to optimize image size
-                        const optimizedUrl = baseUrl.includes('?')
-                            ? `${baseUrl}&width=${this.avatarSize * 2}`
-                            : `${baseUrl}?width=${this.avatarSize * 2}`;
+                            // Add border circle for fallback avatars
+                            group.append('circle')
+                                .attr('class', 'avatar-border')
+                                .attr('cx', this.avatarSize / 2)
+                                .attr('cy', this.avatarSize / 2)
+                                .attr('r', this.avatarSize / 2)
+                                .attr('fill', 'none')
+                                .attr('stroke', '#dee2e6')
+                                .attr('stroke-width', 1);
+                            return; // Skip image rendering
+                        }
 
                         // Render avatar image
                         const chart = this;  // Capture chart instance for error handler
@@ -1273,6 +1358,72 @@ class D3GanttChart {
             group.append('title')
                 .text(tooltipText);
         });
+    }
+
+    /**
+     * Build absolute avatar URL with proper URL API
+     *
+     * Handles:
+     * - Relative URLs (starting with /) by prepending gitlabUrl
+     * - Protocol-relative URLs (//)
+     * - Absolute URLs (pass through)
+     * - Query parameter optimization (width)
+     *
+     * Fails fast with clear error if:
+     * - Relative URL provided but gitlabUrl not configured
+     * - Invalid URL format
+     *
+     * @param {string} avatarUrl - Avatar URL from GitLab API
+     * @returns {string} Absolute optimized avatar URL
+     * @throws {Error} If URL cannot be constructed
+     */
+    buildAvatarUrl(avatarUrl) {
+        if (!avatarUrl || typeof avatarUrl !== 'string') {
+            throw new Error('Avatar URL must be a non-empty string');
+        }
+
+        let absoluteUrl;
+
+        // Handle relative URLs (starting with /)
+        if (avatarUrl.startsWith('/') && !avatarUrl.startsWith('//')) {
+            // Validate gitlabUrl is configured
+            if (!this.config.gitlabUrl) {
+                throw new Error('Relative avatar URL provided but config.gitlabUrl is not set');
+            }
+
+            // Validate gitlabUrl format
+            let baseUrl;
+            try {
+                baseUrl = new URL(this.config.gitlabUrl);
+            } catch (error) {
+                throw new Error(`Invalid config.gitlabUrl: ${error.message}`);
+            }
+
+            // Construct absolute URL properly (URL constructor handles path joining)
+            try {
+                absoluteUrl = new URL(avatarUrl, baseUrl);
+            } catch (error) {
+                throw new Error(`Failed to construct absolute URL: ${error.message}`);
+            }
+        } else {
+            // Absolute or protocol-relative URL - parse directly
+            try {
+                // Protocol-relative URLs need protocol prepended
+                if (avatarUrl.startsWith('//')) {
+                    absoluteUrl = new URL('https:' + avatarUrl);
+                } else {
+                    absoluteUrl = new URL(avatarUrl);
+                }
+            } catch (error) {
+                throw new Error(`Invalid avatar URL format: ${error.message}`);
+            }
+        }
+
+        // Add or update width parameter for optimization using URLSearchParams
+        const targetWidth = this.avatarSize * 2; // 2x for retina displays
+        absoluteUrl.searchParams.set('width', targetWidth.toString());
+
+        return absoluteUrl.toString();
     }
 
     /**

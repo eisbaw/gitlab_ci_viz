@@ -290,6 +290,156 @@
             }
         });
 
+        // Tests for getUserForRow() pure function
+        test('getUserForRow returns triggeringUser for pipeline row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const mockUser = { id: 1, username: 'alice', name: 'Alice', avatar_url: 'http://example.com/alice.jpg' };
+            const mockPipeline = { triggeringUser: mockUser, group: null };
+            const row = { type: 'pipeline', pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== mockUser) {
+                throw new Error('Expected triggeringUser to be returned');
+            }
+        });
+
+        test('getUserForRow falls back to group for pipeline row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const mockGroup = { id: 1, username: 'project', name: 'Project', avatar_url: null };
+            const mockPipeline = { triggeringUser: null, group: mockGroup };
+            const row = { type: 'pipeline', pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== mockGroup) {
+                throw new Error('Expected group to be returned as fallback');
+            }
+        });
+
+        test('getUserForRow returns null for pipeline row without user/group', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const mockPipeline = { triggeringUser: null, group: null };
+            const row = { type: 'pipeline', pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null when no user or group');
+            }
+        });
+
+        test('getUserForRow returns job user for job row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const jobUser = { id: 2, username: 'bob', name: 'Bob', avatar_url: 'http://example.com/bob.jpg' };
+            const pipelineUser = { id: 1, username: 'alice', name: 'Alice', avatar_url: 'http://example.com/alice.jpg' };
+            const mockJob = { user: jobUser };
+            const mockPipeline = { triggeringUser: pipelineUser, group: null };
+            const row = { type: 'job', job: mockJob, pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== jobUser) {
+                throw new Error('Expected job user to be returned (priority over pipeline user)');
+            }
+        });
+
+        test('getUserForRow falls back to pipeline triggeringUser for job row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const pipelineUser = { id: 1, username: 'alice', name: 'Alice', avatar_url: 'http://example.com/alice.jpg' };
+            const mockJob = { user: null };
+            const mockPipeline = { triggeringUser: pipelineUser, group: null };
+            const row = { type: 'job', job: mockJob, pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== pipelineUser) {
+                throw new Error('Expected pipeline triggeringUser to be returned');
+            }
+        });
+
+        test('getUserForRow falls back to pipeline group for job row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const mockGroup = { id: 1, username: 'project', name: 'Project', avatar_url: null };
+            const mockJob = { user: null };
+            const mockPipeline = { triggeringUser: null, group: mockGroup };
+            const row = { type: 'job', job: mockJob, pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== mockGroup) {
+                throw new Error('Expected pipeline group to be returned as last fallback');
+            }
+        });
+
+        test('getUserForRow returns null for job row without any user', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const mockJob = { user: null };
+            const mockPipeline = { triggeringUser: null, group: null };
+            const row = { type: 'job', job: mockJob, pipeline: mockPipeline };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null when no user anywhere in fallback chain');
+            }
+        });
+
+        test('getUserForRow returns null for group row', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const row = { type: 'group' };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null for group row (no user association)');
+            }
+        });
+
+        test('getUserForRow handles malformed pipeline row gracefully', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const row = { type: 'pipeline', pipeline: null };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null for malformed pipeline row');
+            }
+        });
+
+        test('getUserForRow handles malformed job row gracefully', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const row = { type: 'job', job: null, pipeline: null };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null for malformed job row');
+            }
+        });
+
+        test('getUserForRow handles unknown row type gracefully', () => {
+            const config = { gitlabUrl: 'https://gitlab.com' };
+            const chart = new D3GanttChart('visualization', config);
+
+            const row = { type: 'unknown' };
+
+            const user = chart.getUserForRow(row);
+            if (user !== null) {
+                throw new Error('Expected null for unknown row type');
+            }
+        });
+
         // Display results
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<h2>Test Results</h2>' +
