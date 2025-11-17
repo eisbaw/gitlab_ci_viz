@@ -701,6 +701,53 @@ class D3GanttChart {
                     return colors.stroke;
                 })
         );
+
+        // Render background labels for expanded pipelines
+        const labels = backgroundsLayer.selectAll('text.pipeline-background-label')
+            .data(expandedPipelines, d => d.pipeline.id);
+
+        labels.join(
+            enter => enter.append('text')
+                .attr('class', 'pipeline-background-label')
+                .attr('x', d => this.xScale(d.minTime) + 10) // 10px padding from left edge
+                .attr('y', d => {
+                    // Position in vertical middle of the background box
+                    const firstJobY = this.yScale(d.firstJobIndex) - 2;
+                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+                    const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
+                    return firstJobY + boxHeight / 2;
+                })
+                .attr('dominant-baseline', 'middle')
+                .attr('text-anchor', 'start')
+                .attr('font-size', '24px')
+                .attr('font-weight', '600')
+                .attr('fill', d => {
+                    const colors = this.getProjectColor(d.projectName);
+                    return colors.stroke;
+                })
+                .attr('fill-opacity', 0.15)
+                .attr('pointer-events', 'none')
+                .text(d => {
+                    const project = d.projectName || 'Unknown';
+                    const sha = d.pipeline.sha ? d.pipeline.sha.substring(0, 8) : 'N/A';
+                    const ref = d.pipeline.ref || 'N/A';
+                    return `${project} • ${sha} • ${ref}`;
+                }),
+            update => update
+                .attr('x', d => this.xScale(d.minTime) + 10)
+                .attr('y', d => {
+                    const firstJobY = this.yScale(d.firstJobIndex) - 2;
+                    const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
+                    const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
+                    return firstJobY + boxHeight / 2;
+                })
+                .text(d => {
+                    const project = d.projectName || 'Unknown';
+                    const sha = d.pipeline.sha ? d.pipeline.sha.substring(0, 8) : 'N/A';
+                    const ref = d.pipeline.ref || 'N/A';
+                    return `${project} • ${sha} • ${ref}`;
+                })
+        );
     }
 
     /**
