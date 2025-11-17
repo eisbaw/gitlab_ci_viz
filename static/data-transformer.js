@@ -299,17 +299,24 @@ class Job {
 
     /**
      * Get effective start time for timeline
-     * Falls back to created_at if started_at is null (pending jobs)
+     * - Started jobs: use startedAt
+     * - Pending jobs: use current time (positioned at "Now" line)
      * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
-        return this.startedAt || this.createdAt;
+        // If job has started, use actual start time
+        if (this.startedAt) {
+            return this.startedAt;
+        }
+
+        // Pending jobs: position at current time (to the right of "Now" line)
+        return new Date().toISOString();
     }
 
     /**
      * Get effective end time for timeline
      * For running jobs, uses current time
-     * For pending jobs, uses created_at + small offset for visibility
+     * For pending jobs, uses now + small offset for visibility
      *
      * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
      * since jobs are typically smaller units that start quickly. This helps
@@ -326,12 +333,12 @@ class Job {
             return new Date().toISOString();
         }
 
-        // Pending job: show small bar for visibility (2 minutes)
+        // Pending job: show small bar to the right of "Now" (2 minutes)
         // WHY 2 minutes: Shorter than pipelines (5 min) since jobs typically start quickly
         // once runner is assigned. Balances visibility vs timeline clutter.
-        const created = new Date(this.createdAt);
+        const now = new Date();
         const PENDING_VISIBILITY_MS = 2 * 60 * 1000;
-        const endTime = new Date(created.getTime() + PENDING_VISIBILITY_MS);
+        const endTime = new Date(now.getTime() + PENDING_VISIBILITY_MS);
         return endTime.toISOString();
     }
 
