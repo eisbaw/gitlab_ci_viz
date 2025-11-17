@@ -30,6 +30,7 @@
             border-radius: 3px;
             font-size: 0.8em;
             line-height: 1.2;
+            display: none; /* Hidden by default, only show for critical errors */
         }
         #status.loading {
             background-color: #fff3cd;
@@ -42,6 +43,7 @@
         #status.error {
             background-color: #f8d7da;
             border-left: 4px solid #dc3545;
+            display: block; /* Show errors */
         }
         #status.warning {
             background-color: #fff3cd;
@@ -161,6 +163,27 @@
             grid-column: 1 / -1; /* Spans full width due to complexity */
         }
 
+        /* Two-column layout for filter sections */
+        .filter-columns-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-items: start;
+        }
+
+        .filter-column {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* Stack vertically on mobile */
+        @media (max-width: 768px) {
+            .filter-columns-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
         #zoom-controls {
             display: flex;
             flex-direction: column;
@@ -208,6 +231,48 @@
             font-size: 0.75em;
             color: #6c757d;
             line-height: 1.4;
+        }
+
+        /* Progress bar styling */
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 6px 0 4px 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff 0%, #0056b3 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            position: relative;
+        }
+
+        .progress-bar.countdown {
+            background: linear-gradient(90deg, #28a745 0%, #1e7e34 100%);
+        }
+
+        .progress-bar.error {
+            background: linear-gradient(90deg, #dc3545 0%, #bd2130 100%);
+        }
+
+        .data-fetch-status {
+            font-size: 0.7em;
+            color: #495057;
+            margin-top: 4px;
+        }
+
+        .data-fetch-message {
+            font-weight: 500;
+            color: #212529;
+        }
+
+        .data-fetch-details {
+            color: #6c757d;
+            margin-top: 2px;
         }
 
         /* Responsive adjustments */
@@ -319,9 +384,7 @@
             background-color: #5a6268;
         }
         .job-search-section {
-            margin-top: 4px;
-            padding-top: 4px;
-            border-top: 1px solid #dee2e6;
+            /* No longer needs top border/margin since it's in a separate column */
         }
         .job-search-input {
             display: flex;
@@ -656,6 +719,96 @@
             outline-offset: 3px;
         }
 
+        /* Legend panel */
+        #legend-panel {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+            max-width: 280px;
+            font-size: 0.85em;
+        }
+        #legend-panel.collapsed {
+            padding: 0;
+            overflow: hidden;
+        }
+        .legend-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        #legend-panel.collapsed .legend-header {
+            margin-bottom: 0;
+            padding: 8px 12px;
+        }
+        #legend-panel.collapsed .legend-content {
+            display: none;
+        }
+        .legend-toggle-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            font-size: 1.2em;
+            line-height: 1;
+            color: #6c757d;
+        }
+        .legend-toggle-btn:hover {
+            color: #495057;
+        }
+        .legend-toggle-btn:focus {
+            outline: 2px solid #007bff;
+            outline-offset: 2px;
+        }
+        .legend-section {
+            margin-bottom: 12px;
+        }
+        .legend-section:last-child {
+            margin-bottom: 0;
+        }
+        .legend-section-title {
+            font-weight: 600;
+            font-size: 0.9em;
+            margin-bottom: 6px;
+            color: #495057;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+            line-height: 1.4;
+        }
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+        .legend-color-box {
+            width: 28px;
+            height: 14px;
+            border-radius: 2px;
+            margin-right: 8px;
+            flex-shrink: 0;
+        }
+        .legend-text {
+            flex: 1;
+            color: #495057;
+            font-size: 0.85em;
+        }
+        .legend-project-note {
+            font-size: 0.8em;
+            color: #6c757d;
+            font-style: italic;
+            margin-top: 4px;
+            line-height: 1.3;
+        }
+
         .gantt-tooltip {
             position: absolute;
             padding: 8px;
@@ -759,44 +912,52 @@
 
             <section id="data-fetch-controls" class="control-section" style="display: none;" role="region" aria-labelledby="data-fetch-heading">
                 <h2 id="data-fetch-heading">Data Status</h2>
-                <div class="data-fetch-info" id="data-fetch-info">
-                    Ready to load data
+                <div class="progress-bar-container" id="progress-container" style="display: none;">
+                    <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
+                </div>
+                <div class="data-fetch-status" id="data-fetch-status">
+                    <div class="data-fetch-message" id="data-fetch-message">Ready to load data</div>
+                    <div class="data-fetch-details" id="data-fetch-details"></div>
                 </div>
             </section>
 
             <nav id="filter-controls" class="control-section" style="display: none;" role="region" aria-labelledby="filter-heading">
-                <h2 id="filter-heading">Filter by Pipeline Status</h2>
-                <div class="filter-checkboxes" role="group" aria-label="Pipeline status filters">
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-success" value="success" checked aria-label="Show success pipelines">
-                        <label for="filter-success">Success</label>
+                <div class="filter-columns-container">
+                    <div class="filter-column">
+                        <h2 id="filter-heading">Filter by Pipeline Status</h2>
+                        <div class="filter-checkboxes" role="group" aria-label="Pipeline status filters">
+                            <div class="filter-checkbox">
+                                <input type="checkbox" id="filter-success" value="success" checked aria-label="Show success pipelines">
+                                <label for="filter-success">Success</label>
+                            </div>
+                            <div class="filter-checkbox">
+                                <input type="checkbox" id="filter-failed" value="failed" checked aria-label="Show failed pipelines">
+                                <label for="filter-failed">Failed</label>
+                            </div>
+                            <div class="filter-checkbox">
+                                <input type="checkbox" id="filter-running" value="running" checked aria-label="Show running pipelines">
+                                <label for="filter-running">Running</label>
+                            </div>
+                            <div class="filter-checkbox">
+                                <input type="checkbox" id="filter-pending" value="pending" checked aria-label="Show pending pipelines">
+                                <label for="filter-pending">Pending</label>
+                            </div>
+                            <div class="filter-checkbox">
+                                <input type="checkbox" id="filter-canceled" value="canceled" checked aria-label="Show canceled pipelines">
+                                <label for="filter-canceled">Canceled</label>
+                            </div>
+                            <div class="filter-actions">
+                                <button id="clear-filters" aria-label="Clear all filters">Clear All</button>
+                                <button id="reset-filters" aria-label="Reset filters to default">Reset</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-failed" value="failed" checked aria-label="Show failed pipelines">
-                        <label for="filter-failed">Failed</label>
-                    </div>
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-running" value="running" checked aria-label="Show running pipelines">
-                        <label for="filter-running">Running</label>
-                    </div>
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-pending" value="pending" checked aria-label="Show pending pipelines">
-                        <label for="filter-pending">Pending</label>
-                    </div>
-                    <div class="filter-checkbox">
-                        <input type="checkbox" id="filter-canceled" value="canceled" checked aria-label="Show canceled pipelines">
-                        <label for="filter-canceled">Canceled</label>
-                    </div>
-                    <div class="filter-actions">
-                        <button id="clear-filters" aria-label="Clear all filters">Clear All</button>
-                        <button id="reset-filters" aria-label="Reset filters to default">Reset</button>
-                    </div>
-                </div>
-                <div class="job-search-section" role="search" aria-labelledby="job-search-heading">
-                    <h2 id="job-search-heading">Filter by Job Name</h2>
-                    <div class="job-search-input">
-                        <input type="text" id="job-search-input" placeholder="Search job names (e.g., 'build', 'test')..." aria-label="Search job names">
-                        <button id="clear-job-search" aria-label="Clear job search">Clear</button>
+                    <div class="filter-column job-search-section" role="search" aria-labelledby="job-search-heading">
+                        <h2 id="job-search-heading">Filter by Job Name</h2>
+                        <div class="job-search-input">
+                            <input type="text" id="job-search-input" placeholder="Search job names (e.g., 'build', 'test')..." aria-label="Search job names">
+                            <button id="clear-job-search" aria-label="Clear job search">Clear</button>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -807,6 +968,103 @@
         </section>
         <div class="gantt-tooltip" id="tooltip" role="tooltip" aria-live="polite"></div>
     </main>
+
+    <!-- Color Legend -->
+    <aside id="legend-panel" role="complementary" aria-labelledby="legend-title">
+        <div class="legend-header">
+            <span id="legend-title">Legend</span>
+            <button class="legend-toggle-btn" id="legend-toggle" aria-label="Toggle legend" aria-expanded="true">
+                <span aria-hidden="true">−</span>
+            </button>
+        </div>
+        <div class="legend-content">
+            <!-- Contention Levels -->
+            <div class="legend-section">
+                <div class="legend-section-title">Runner Contention</div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: rgba(255, 235, 59, 0.15); border: 1px solid rgba(255, 235, 59, 0.4);"></div>
+                    <span class="legend-text">Low (2-3 concurrent)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: rgba(255, 152, 0, 0.20); border: 1px solid rgba(255, 152, 0, 0.5);"></div>
+                    <span class="legend-text">Medium (4 concurrent)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: rgba(244, 67, 54, 0.25); border: 1px solid rgba(244, 67, 54, 0.6);"></div>
+                    <span class="legend-text">High (5-7 concurrent)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: rgba(183, 28, 28, 0.30); border: 1px solid rgba(183, 28, 28, 0.7);"></div>
+                    <span class="legend-text">Critical (8+ concurrent)</span>
+                </div>
+            </div>
+
+            <!-- Status Indicators -->
+            <div class="legend-section">
+                <div class="legend-section-title">Pipeline/Job Status</div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#555" stroke-width="2" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Success (solid)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#555" stroke-width="3" stroke-dasharray="4,2" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Failed (dashed)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#555" stroke-width="2" stroke-dasharray="2,2" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Running (dotted)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#555" stroke-width="2" stroke-dasharray="6,3" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Pending (long dash)</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" stroke="#555" stroke-width="2" stroke-dasharray="3,3,1,3" rx="2"/>
+                    </svg>
+                    <span class="legend-text">Canceled (dash-dot)</span>
+                </div>
+            </div>
+
+            <!-- Manual Jobs -->
+            <div class="legend-section">
+                <div class="legend-section-title">Manual Jobs</div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#9e9e9e" fill-opacity="0.5" stroke="#757575" stroke-opacity="0.7" stroke-width="2" rx="4"/>
+                    </svg>
+                    <span class="legend-text">Manual job (requires trigger)</span>
+                </div>
+                <div class="legend-project-note">Jobs that need manual intervention to start</div>
+            </div>
+
+            <!-- Project Colors -->
+            <div class="legend-section">
+                <div class="legend-section-title">Project Colors</div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: hsl(200, 55%, 50%); border: 2px solid hsl(200, 55%, 40%);"></div>
+                    <span class="legend-text">Sample Project A</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: hsl(280, 55%, 50%); border: 2px solid hsl(280, 55%, 40%);"></div>
+                    <span class="legend-text">Sample Project B</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color-box" style="background: hsl(30, 55%, 50%); border: 2px solid hsl(30, 55%, 40%);"></div>
+                    <span class="legend-text">Sample Project C</span>
+                </div>
+                <div class="legend-project-note">Each project gets a unique color based on its name</div>
+            </div>
+        </div>
+    </aside>
 
     <!-- Keyboard shortcuts help button -->
     <button class="help-trigger-btn" id="help-trigger" aria-label="Show keyboard shortcuts (press ?)">
@@ -875,6 +1133,7 @@
 
         // Auto-refresh state
         let refreshTimer = null;
+        let countdownTimer = null;
 
         // URL state manager - persists filters and view state to URL
         const URLStateManager = {
@@ -1298,17 +1557,117 @@
             }
 
             dataFetchControls.style.display = 'block';
-            updateDataFetchInfo('Ready to load data');
+            updateDataFetchInfo('Ready to load data', '', 0, false);
             console.log('Data fetch controls initialized');
         }
 
         /**
-         * Update data fetch info display
+         * Update data fetch info display with progress
+         * @param {string} message - Main status message
+         * @param {string} details - Additional details (optional)
+         * @param {number} progress - Progress percentage 0-100 (0 hides progress bar)
+         * @param {boolean} isCountdown - If true, shows countdown styling
          */
-        function updateDataFetchInfo(message) {
-            const infoDiv = document.getElementById('data-fetch-info');
-            if (infoDiv) {
-                infoDiv.textContent = message;
+        function updateDataFetchInfo(message, details = '', progress = 0, isCountdown = false) {
+            const messageDiv = document.getElementById('data-fetch-message');
+            const detailsDiv = document.getElementById('data-fetch-details');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+
+            if (messageDiv) {
+                messageDiv.textContent = message;
+            }
+
+            if (detailsDiv) {
+                detailsDiv.textContent = details;
+            }
+
+            if (progressContainer && progressBar) {
+                if (progress > 0) {
+                    progressContainer.style.display = 'block';
+                    progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+
+                    // Update styling based on state
+                    progressBar.className = 'progress-bar';
+                    if (isCountdown) {
+                        progressBar.classList.add('countdown');
+                    }
+                } else {
+                    progressContainer.style.display = 'none';
+                    progressBar.style.width = '0%';
+                }
+            }
+        }
+
+        /**
+         * Show error in data fetch display
+         */
+        function showDataFetchError(message) {
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                progressBar.className = 'progress-bar error';
+            }
+            updateDataFetchInfo(message, 'Check console for details', 100, false);
+        }
+
+        /**
+         * Start countdown display for auto-refresh
+         */
+        function startCountdown(seconds) {
+            // Clear any existing countdown
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+            }
+
+            let remaining = seconds;
+            const startTime = Date.now();
+            const endTime = startTime + (seconds * 1000);
+
+            // Update immediately
+            updateCountdownDisplay(remaining);
+
+            // Update every second
+            countdownTimer = setInterval(() => {
+                const now = Date.now();
+                remaining = Math.ceil((endTime - now) / 1000);
+
+                if (remaining <= 0) {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    updateDataFetchInfo('Refreshing...', '', 0, false);
+                } else {
+                    updateCountdownDisplay(remaining);
+                }
+            }, 1000);
+        }
+
+        /**
+         * Update countdown display
+         */
+        function updateCountdownDisplay(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+            // Show countdown as reverse progress (100% -> 0%)
+            const totalSeconds = CONFIG.refreshInterval || 60;
+            const progress = (seconds / totalSeconds) * 100;
+
+            updateDataFetchInfo(
+                'Data loaded',
+                `Next refresh in ${timeStr}`,
+                progress,
+                true
+            );
+        }
+
+        /**
+         * Stop countdown timer
+         */
+        function stopCountdown() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
             }
         }
 
@@ -1588,6 +1947,45 @@
         }
 
         /**
+         * Initialize legend panel toggle
+         */
+        function initializeLegend() {
+            const panel = document.getElementById('legend-panel');
+            const toggleBtn = document.getElementById('legend-toggle');
+            const toggleIcon = toggleBtn.querySelector('span');
+
+            if (!panel || !toggleBtn) {
+                console.warn('Legend panel elements not found');
+                return;
+            }
+
+            // Load saved state from localStorage
+            const isCollapsed = localStorage.getItem('legendCollapsed') === 'true';
+            if (isCollapsed) {
+                panel.classList.add('collapsed');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+                toggleIcon.textContent = '+';
+            }
+
+            toggleBtn.addEventListener('click', () => {
+                const nowCollapsed = panel.classList.toggle('collapsed');
+                toggleBtn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+                toggleIcon.textContent = nowCollapsed ? '+' : '−';
+
+                // Save state to localStorage
+                localStorage.setItem('legendCollapsed', nowCollapsed.toString());
+
+                // Announce to screen readers
+                announceToScreenReader(
+                    nowCollapsed ? 'Legend collapsed' : 'Legend expanded',
+                    true
+                );
+            });
+
+            console.log('Legend panel initialized');
+        }
+
+        /**
          * Initialize keyboard shortcuts help panel
          */
         function initializeKeyboardHelp() {
@@ -1740,6 +2138,9 @@
             // Initialize filter controls and get URL state
             initializeFilterControls();
 
+            // Initialize legend panel
+            initializeLegend();
+
             // Initialize keyboard shortcuts help
             initializeKeyboardHelp();
 
@@ -1784,21 +2185,31 @@
          * Fetch GitLab data and render on timeline
          */
         async function fetchAndRender(isRefresh = false) {
+            // Stop countdown when starting fetch
+            stopCountdown();
+
             try {
-                const loadingMsg = isRefresh ? 'Refreshing data...' : 'Fetching projects from GitLab...';
+                // Stage 1: Fetch projects (0-25%)
+                const loadingMsg = isRefresh ? 'Refreshing data...' : 'Fetching projects...';
                 showLoading(loadingMsg);
-                updateDataFetchInfo('Fetching projects...');
+                updateDataFetchInfo('Fetching projects...', '', 10, false);
                 const projects = await apiClient.fetchProjects();
 
                 projectMap.clear();
                 projects.forEach(p => projectMap.set(p.id, p));
 
+                // Stage 2: Fetch pipelines (25-60%)
                 showLoading(`Fetching pipelines from ${projects.length} projects...`);
-                updateDataFetchInfo(`Fetching pipelines from ${projects.length} projects...`);
+                updateDataFetchInfo(
+                    'Fetching pipelines...',
+                    `From ${projects.length} projects`,
+                    35,
+                    false
+                );
                 const pipelines = await apiClient.fetchPipelines(projects, CONFIG.updatedAfter);
 
                 if (pipelines.length === 0) {
-                    updateDataFetchInfo('No pipelines found');
+                    updateDataFetchInfo('No pipelines found', '', 0, false);
                     if (isRefresh) {
                         updateStatus(
                             `<strong>No new pipelines</strong><br>` +
@@ -1815,8 +2226,14 @@
                     return;
                 }
 
+                // Stage 3: Fetch jobs (60-85%)
                 showLoading(`Fetching jobs from ${pipelines.length} pipelines...`);
-                updateDataFetchInfo(`Fetching jobs from ${pipelines.length} pipelines...`);
+                updateDataFetchInfo(
+                    'Fetching jobs...',
+                    `From ${pipelines.length} pipelines`,
+                    70,
+                    false
+                );
                 const jobs = await apiClient.fetchJobs(pipelines);
 
                 unfilteredPipelines = pipelines;
@@ -1824,32 +2241,44 @@
 
                 const { filteredPipelines, filteredJobs } = computeFilteredData();
 
+                // Stage 4: Transform data (85-95%)
                 showLoading('Transforming data for visualization...');
-                updateDataFetchInfo('Transforming data...');
+                updateDataFetchInfo('Transforming data...', '', 90, false);
                 const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
 
                 const allPipelines = domainModel.flatMap(user => user.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
 
+                // Stage 5: Render (95-100%)
                 showLoading('Rendering GANTT chart...');
-                updateDataFetchInfo('Rendering visualization...');
+                updateDataFetchInfo('Rendering visualization...', '', 98, false);
                 ganttChart.render(domainModel, contentionPeriods);
 
                 updateStatsSummary(pipelines, jobs);
 
+                // Success - show final status
                 const actionWord = isRefresh ? 'refreshed' : 'loaded';
                 const successMessage =
                     `<strong>Data ${actionWord} successfully</strong><br>` +
                     `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs<br>` +
                     `Time range: ${CONFIG.since}`;
                 updateStatus(successMessage, 'success');
-                updateDataFetchInfo(`${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs`);
+
+                // Show summary with countdown if auto-refresh is enabled
+                const summaryDetails = `${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs`;
+                if (CONFIG.refreshInterval && CONFIG.refreshInterval > 0) {
+                    updateDataFetchInfo('Data loaded', summaryDetails, 100, false);
+                    // Start countdown after brief delay
+                    setTimeout(() => startCountdown(CONFIG.refreshInterval), 1000);
+                } else {
+                    updateDataFetchInfo('Data loaded', summaryDetails, 0, false);
+                }
 
             } catch (error) {
                 console.error('Error fetching and rendering data:', error);
                 const errorMessage = formatError(error);
                 updateStatus(errorMessage, 'error');
-                updateDataFetchInfo('Error loading data');
+                showDataFetchError('Error loading data');
 
                 if (error.originalError) {
                     console.error('Original error:', error.originalError);

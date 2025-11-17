@@ -8,6 +8,7 @@
  * - Time-based sorting (newest pipelines first)
  * - Project-based color coding (consistent colors per project)
  * - Status indication via border styles (dashed for failed, dotted for running, etc.)
+ * - Manual job styling (grey, 50% opacity, circular shape)
  * - Collapsible pipeline groups
  * - Interactive tooltips
  * - Click to open GitLab pages
@@ -449,6 +450,13 @@ class D3GanttChart {
     }
 
     /**
+     * Check if a job is a manual job (requires human intervention)
+     */
+    isManualJob(d) {
+        return d.type === 'job' && d.status === 'manual';
+    }
+
+    /**
      * Render timeline bars (pipelines and jobs)
      */
     renderBars(rows, mode = 'full') {
@@ -500,15 +508,23 @@ class D3GanttChart {
                 })
                 .attr('width', 0)
                 .attr('height', this.barHeight)
-                .attr('rx', 2)  // Slightly smaller radius for thinner bars
+                .attr('rx', d => this.isManualJob(d) ? this.barHeight / 2 : 2)  // Circular for manual jobs
                 .attr('fill', d => {
+                    if (this.isManualJob(d)) {
+                        return '#9e9e9e';  // Grey for manual jobs
+                    }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
+                .attr('fill-opacity', d => this.isManualJob(d) ? 0.5 : 1)  // 50% opacity for manual
                 .attr('stroke', d => {
+                    if (this.isManualJob(d)) {
+                        return '#757575';  // Darker grey border for manual jobs
+                    }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.stroke;
                 })
+                .attr('stroke-opacity', d => this.isManualJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);
                     return borderStyle.width;
@@ -538,14 +554,23 @@ class D3GanttChart {
                     const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return Math.max(w, 4);
                 })
+                .attr('rx', d => this.isManualJob(d) ? this.barHeight / 2 : 2)  // Circular for manual jobs
                 .attr('fill', d => {
+                    if (this.isManualJob(d)) {
+                        return '#9e9e9e';  // Grey for manual jobs
+                    }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
+                .attr('fill-opacity', d => this.isManualJob(d) ? 0.5 : 1)  // 50% opacity for manual
                 .attr('stroke', d => {
+                    if (this.isManualJob(d)) {
+                        return '#757575';  // Darker grey border for manual jobs
+                    }
                     const colors = this.getProjectColor(d.projectName);
                     return colors.stroke;
                 })
+                .attr('stroke-opacity', d => this.isManualJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
                     const borderStyle = this.getStatusBorderStyle(d.status);
                     return borderStyle.width;
@@ -1022,6 +1047,11 @@ class D3GanttChart {
         parts.push(`Job: ${job.name}`);
         parts.push(`Stage: ${job.stage}`);
         parts.push(`Status: ${job.status}`);
+
+        // Add note for manual jobs
+        if (job.status === 'manual') {
+            parts.push(`⚠ Requires manual trigger`);
+        }
 
         if (job.startedAt) {
             parts.push(`Started: ${this.formatRelativeTime(job.startedAt)}`);
