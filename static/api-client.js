@@ -609,72 +609,72 @@ class GitLabAPIClient {
         }
 
         // GraphQL query to fetch pipelines with user information
-        // Note: We query by project ID (gid://gitlab/Project/123 format)
+        // Note: We query one project at a time to handle pagination properly
         const query = `
-            query GetPipelines($projectIds: [ID!]!, $updatedAfter: Time) {
-                projects(ids: $projectIds) {
-                    nodes {
-                        id
-                        fullPath
-                        pipelines(updatedAfter: $updatedAfter, first: 100) {
-                            nodes {
+            query GetPipelines($projectId: ID!, $updatedAfter: Time, $after: String) {
+                project(fullPath: $projectId) {
+                    id
+                    fullPath
+                    pipelines(updatedAfter: $updatedAfter, first: 100, after: $after) {
+                        nodes {
+                            id
+                            iid
+                            status
+                            ref
+                            sha
+                            createdAt
+                            updatedAt
+                            startedAt
+                            finishedAt
+                            duration
+                            user {
                                 id
-                                iid
-                                status
-                                ref
-                                sha
-                                createdAt
-                                updatedAt
-                                startedAt
-                                finishedAt
-                                duration
-                                user {
-                                    id
-                                    username
-                                    name
-                                    avatarUrl
-                                }
+                                username
+                                name
+                                avatarUrl
                             }
-                            pageInfo {
-                                hasNextPage
-                                endCursor
-                            }
+                        }
+                        pageInfo {
+                            hasNextPage
+                            endCursor
                         }
                     }
                 }
             }
         `;
 
-        // Convert project IDs to GitLab GraphQL ID format (gid://gitlab/Project/123)
-        const projectIds = projects.map(p => `gid://gitlab/Project/${p.id}`);
-
-        // Execute GraphQL query
-        const variables = {
-            projectIds: projectIds,
-            updatedAfter: updatedAfter
-        };
-
         try {
-            const data = await this.graphqlQuery(query, variables);
+            const allPipelines = [];
 
-            // Transform GraphQL response to REST API format
-            const pipelines = [];
+            // Fetch pipelines for each project (with pagination per project)
+            for (const project of projects) {
+                let hasNextPage = true;
+                let cursor = null;
+                let projectPipelines = [];
 
-            if (data.projects && data.projects.nodes) {
-                for (const project of data.projects.nodes) {
-                    // Extract numeric project ID from GraphQL ID (gid://gitlab/Project/123 -> 123)
-                    const projectIdMatch = project.id.match(/\/(\d+)$/);
-                    const projectId = projectIdMatch ? parseInt(projectIdMatch[1], 10) : null;
+                // Use fullPath if available, otherwise construct from path_with_namespace or use ID
+                const projectId = project.path_with_namespace || `gid://gitlab/Project/${project.id}`;
 
-                    if (!projectId) {
-                        console.warn(`Failed to extract project ID from GraphQL ID: ${project.id}`);
-                        continue;
+                while (hasNextPage) {
+                    const variables = {
+                        projectId: projectId,
+                        updatedAfter: updatedAfter,
+                        after: cursor
+                    };
+
+                    const data = await this.graphqlQuery(query, variables);
+
+                    if (!data.project) {
+                        console.warn(`Project not found in GraphQL response: ${projectId}`);
+                        break;
                     }
 
-                    const projectPath = project.fullPath || '';
+                    // Extract numeric project ID from GraphQL ID (gid://gitlab/Project/123 -> 123)
+                    const projectIdNumeric = project.id; // We already have this from input
+                    const projectPath = data.project.fullPath || '';
 
-                    if (project.pipelines && project.pipelines.nodes) {
-                        for (const pipeline of project.pipelines.nodes) {
+                    if (data.project.pipelines && data.project.pipelines.nodes) {
+                        for (const pipeline of data.project.pipelines.nodes) {
                             // Extract numeric pipeline ID from GraphQL ID
                             const pipelineIdMatch = pipeline.id.match(/\/(\d+)$/);
                             const pipelineId = pipelineIdMatch ? parseInt(pipelineIdMatch[1], 10) : null;
@@ -685,10 +685,10 @@ class GitLabAPIClient {
                             }
 
                             // Transform GraphQL format to REST API format
-                            pipelines.push({
+                            projectPipelines.push({
                                 id: pipelineId,
                                 iid: pipeline.iid,
-                                project_id: projectId,
+                                project_id: projectIdNumeric,
                                 status: pipeline.status.toLowerCase(), // GraphQL uses uppercase, REST uses lowercase
                                 ref: pipeline.ref,
                                 sha: pipeline.sha,
@@ -707,14 +707,31 @@ class GitLabAPIClient {
                             });
                         }
                     }
+
+                    // Check if there's a next page
+                    const pageInfo = data.project.pipelines?.pageInfo;
+                    hasNextPage = pageInfo?.hasNextPage || false;
+                    cursor = pageInfo?.endCursor || null;
+
+                    if (hasNextPage && cursor) {
+                        if (window.logger) {
+                            window.logger.debug(`Fetching next page for project ${projectId} (cursor: ${cursor})`);
+                        }
+                    }
+                }
+
+                allPipelines.push(...projectPipelines);
+
+                if (window.logger) {
+                    window.logger.debug(`Fetched ${projectPipelines.length} pipelines from project ${projectId}`);
                 }
             }
 
             if (window.logger) {
-                window.logger.info(`GraphQL fetched ${pipelines.length} pipelines from ${projects.length} projects`);
+                window.logger.info(`GraphQL fetched ${allPipelines.length} pipelines from ${projects.length} projects`);
             }
 
-            return pipelines;
+            return allPipelines;
 
         } catch (error) {
             // Re-throw with context
