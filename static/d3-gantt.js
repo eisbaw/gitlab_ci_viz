@@ -501,6 +501,16 @@ class D3GanttChart {
     }
 
     /**
+     * Check if a job is pending (created but not yet running)
+     * These are jobs waiting in the queue to be picked up by a runner
+     */
+    isPendingJob(d) {
+        if (d.type !== 'job') return false;
+        const pendingStatuses = ['created', 'pending', 'waiting_for_resource', 'preparing'];
+        return pendingStatuses.includes(d.status);
+    }
+
+    /**
      * Get outline color for jobs based on status and allow_failure flag
      * - Green: success
      * - Red: failed (and not allowed to fail)
@@ -701,7 +711,13 @@ class D3GanttChart {
                 })
                 .attr('width', 0)
                 .attr('height', this.barHeight)
-                .attr('rx', d => this.isUnexecutedJob(d) ? this.barHeight / 2 : 2)  // Circular for unexecuted jobs
+                .attr('rx', d => {
+                    // Circular for unexecuted jobs (manual/skipped) and pending jobs
+                    if (this.isUnexecutedJob(d) || this.isPendingJob(d)) {
+                        return this.barHeight / 2;
+                    }
+                    return 2;
+                })
                 .attr('fill', d => {
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
@@ -709,7 +725,13 @@ class D3GanttChart {
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
-                .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
+                .attr('fill-opacity', d => {
+                    // 50% opacity for unexecuted and pending jobs
+                    if (this.isUnexecutedJob(d) || this.isPendingJob(d)) {
+                        return 0.5;
+                    }
+                    return 1;
+                })
                 .attr('stroke', d => this.getJobOutlineColor(d))
                 .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {
@@ -742,7 +764,13 @@ class D3GanttChart {
                     const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return Math.max(w, 4);
                 })
-                .attr('rx', d => this.isUnexecutedJob(d) ? this.barHeight / 2 : 2)  // Circular for unexecuted jobs
+                .attr('rx', d => {
+                    // Circular for unexecuted jobs (manual/skipped) and pending jobs
+                    if (this.isUnexecutedJob(d) || this.isPendingJob(d)) {
+                        return this.barHeight / 2;
+                    }
+                    return 2;
+                })
                 .attr('fill', d => {
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
@@ -750,7 +778,13 @@ class D3GanttChart {
                     const colors = this.getProjectColor(d.projectName);
                     return colors.fill;
                 })
-                .attr('fill-opacity', d => this.isUnexecutedJob(d) ? 0.5 : 1)  // 50% opacity for unexecuted
+                .attr('fill-opacity', d => {
+                    // 50% opacity for unexecuted and pending jobs
+                    if (this.isUnexecutedJob(d) || this.isPendingJob(d)) {
+                        return 0.5;
+                    }
+                    return 1;
+                })
                 .attr('stroke', d => this.getJobOutlineColor(d))
                 .attr('stroke-opacity', d => this.isUnexecutedJob(d) ? 0.7 : 1)
                 .attr('stroke-width', d => {

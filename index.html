@@ -1093,16 +1093,22 @@
                 </div>
             </div>
 
-            <!-- Unexecuted Jobs (Manual & Skipped) -->
+            <!-- Pending and Unexecuted Jobs -->
             <div class="legend-section">
-                <div class="legend-section-title">Unexecuted Jobs</div>
+                <div class="legend-section-title">Special Job States</div>
+                <div class="legend-item">
+                    <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="0" y="4" width="40" height="8" fill="#6c757d" fill-opacity="0.5" stroke="#555" stroke-width="2" rx="4"/>
+                    </svg>
+                    <span class="legend-text">Pending / Waiting (circles, 50% opacity)</span>
+                </div>
                 <div class="legend-item">
                     <svg width="40" height="12" style="margin-right: 8px; flex-shrink: 0;">
                         <rect x="0" y="4" width="40" height="8" fill="#9e9e9e" fill-opacity="0.5" stroke="#757575" stroke-opacity="0.7" stroke-width="2" rx="4"/>
                     </svg>
-                    <span class="legend-text">Manual / Skipped jobs</span>
+                    <span class="legend-text">Manual / Skipped (grey circles)</span>
                 </div>
-                <div class="legend-project-note">Manual jobs require trigger; skipped jobs had unmet conditions</div>
+                <div class="legend-project-note">Pending jobs are waiting for runners; manual jobs require trigger; skipped jobs had unmet conditions</div>
             </div>
 
             <!-- Job Outcome Colors -->
