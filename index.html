@@ -959,7 +959,7 @@
                     <button class="zoom-button" id="zoom-out" aria-label="Zoom out on timeline">Zoom Out (-)</button>
                     <button class="zoom-button" id="zoom-reset" aria-label="Reset zoom to default view">Reset View</button>
                 </div>
-                <span class="zoom-info">Scroll to zoom, drag to pan</span>
+                <span class="zoom-info">Scroll to zoom, drag or arrows to pan</span>
             </nav>
 
             <section id="data-fetch-controls" class="control-section" style="display: none;" role="region" aria-labelledby="data-fetch-heading">
@@ -1192,6 +1192,14 @@
                 <div class="shortcut-row">
                     <span class="shortcut-key">0</span>
                     <span class="shortcut-desc">Reset zoom to default view</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">← →</span>
+                    <span class="shortcut-desc">Pan left/right on timeline</span>
+                </div>
+                <div class="shortcut-row">
+                    <span class="shortcut-key">↑ ↓</span>
+                    <span class="shortcut-desc">Pan up/down on timeline</span>
                 </div>
                 <div class="shortcut-row">
                     <span class="shortcut-key">Esc</span>
@@ -1608,7 +1616,7 @@
                 }
             });
 
-            // Keyboard shortcuts for zoom
+            // Keyboard shortcuts for zoom and pan
             document.addEventListener('keydown', (e) => {
                 // Don't trigger if user is typing in an input field
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
@@ -1630,6 +1638,30 @@
                 } else if (e.key === '0') {
                     e.preventDefault();
                     document.getElementById('zoom-reset').click();
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    if (ganttChart && ganttChart.pan) {
+                        ganttChart.pan(-50, 0);
+                        announceToScreenReader('Panned left', true);
+                    }
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    if (ganttChart && ganttChart.pan) {
+                        ganttChart.pan(50, 0);
+                        announceToScreenReader('Panned right', true);
+                    }
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (ganttChart && ganttChart.pan) {
+                        ganttChart.pan(0, -50);
+                        announceToScreenReader('Panned up', true);
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (ganttChart && ganttChart.pan) {
+                        ganttChart.pan(0, 50);
+                        announceToScreenReader('Panned down', true);
+                    }
                 }
             });
 

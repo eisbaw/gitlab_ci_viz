@@ -423,6 +423,28 @@ class D3GanttChart {
     }
 
     /**
+     * Pan the view by specified pixel amounts
+     * @param {number} dx - Horizontal pan in pixels (positive = right, negative = left)
+     * @param {number} dy - Vertical pan in pixels (positive = down, negative = up)
+     */
+    pan(dx, dy) {
+        if (!this.zoom || !this.svg || !this.currentTransform) {
+            return;
+        }
+
+        // Get current transform or use identity
+        const transform = this.currentTransform || d3.zoomIdentity;
+
+        // Create new transform with adjusted translation
+        const newTransform = transform.translate(dx, dy);
+
+        // Apply with smooth transition
+        this.svg.transition()
+            .duration(300)
+            .call(this.zoom.transform, newTransform);
+    }
+
+    /**
      * Get current chart width
      */
     getChartWidth() {
