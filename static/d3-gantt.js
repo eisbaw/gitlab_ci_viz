@@ -668,6 +668,11 @@ class D3GanttChart {
             return colors.stroke;
         }
 
+        // Canceled jobs get black outline
+        if (d.status === 'canceled' || d.status === 'cancelled') {
+            return '#000000';  // Black
+        }
+
         // Unexecuted jobs (manual/skipped) get grey
         if (this.isUnexecutedJob(d)) {
             return '#757575';
@@ -987,6 +992,10 @@ class D3GanttChart {
                     return 2;
                 })
                 .attr('fill', d => {
+                    // Black for canceled jobs
+                    if (d.status === 'canceled' || d.status === 'cancelled') {
+                        return '#000000';
+                    }
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }
@@ -1049,6 +1058,10 @@ class D3GanttChart {
                     return 2;
                 })
                 .attr('fill', d => {
+                    // Black for canceled jobs
+                    if (d.status === 'canceled' || d.status === 'cancelled') {
+                        return '#000000';
+                    }
                     if (this.isUnexecutedJob(d)) {
                         return '#9e9e9e';  // Grey for unexecuted jobs (manual/skipped)
                     }

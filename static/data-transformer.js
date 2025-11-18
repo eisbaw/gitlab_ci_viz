@@ -307,7 +307,7 @@ class Job {
      * Get effective start time for timeline
      * - Started jobs: use startedAt
      * - Pending jobs (waiting for runners): use current time (positioned at "Now" line)
-     * - Skipped/Manual jobs: use createdAt (positioned at pipeline time)
+     * - Skipped/Manual/Canceled jobs: use createdAt (positioned at pipeline time)
      * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
@@ -316,8 +316,8 @@ class Job {
             return this.startedAt;
         }
 
-        // Skipped and manual jobs: use creation time (part of pipeline execution)
-        if (this.status === 'skipped' || this.status === 'manual') {
+        // Skipped, manual, and canceled jobs: use creation time (part of pipeline execution)
+        if (this.status === 'skipped' || this.status === 'manual' || this.status === 'canceled' || this.status === 'cancelled') {
             return this.createdAt;
         }
 
@@ -331,7 +331,7 @@ class Job {
      * - Finished jobs: use finishedAt
      * - Running jobs: use current time
      * - Pending jobs: use now + small offset for visibility
-     * - Skipped/Manual jobs: use createdAt + small offset
+     * - Skipped/Manual/Canceled jobs: use createdAt + small offset
      *
      * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
      * since jobs are typically smaller units that start quickly. This helps
@@ -348,8 +348,8 @@ class Job {
             return new Date().toISOString();
         }
 
-        // Skipped and manual jobs: show small bar at pipeline time
-        if (this.status === 'skipped' || this.status === 'manual') {
+        // Skipped, manual, and canceled jobs: show small bar at pipeline time
+        if (this.status === 'skipped' || this.status === 'manual' || this.status === 'canceled' || this.status === 'cancelled') {
             const created = new Date(this.createdAt);
             const VISIBILITY_MS = 2 * 60 * 1000;
             return new Date(created.getTime() + VISIBILITY_MS).toISOString();
