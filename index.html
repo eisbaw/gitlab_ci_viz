@@ -1397,6 +1397,7 @@
         // Duration state encapsulation
         const DurationState = {
             current: '1h',
+            FETCH_BUFFER_MS: 6 * 60 * 60 * 1000, // Always fetch 6 hours extra
 
             set(duration) {
                 this.current = duration;
@@ -1407,8 +1408,8 @@
                 this.current = duration || '1h';
             },
 
-            getUpdatedAfter() {
-                const now = new Date();
+            // Get viewport time range (what the user selected to view)
+            getViewportDuration() {
                 const durationMap = {
                     '1h': 1 * 60 * 60 * 1000,
                     '6h': 6 * 60 * 60 * 1000,
@@ -1416,8 +1417,24 @@
                     '2d': 2 * 24 * 60 * 60 * 1000,
                     '1w': 7 * 24 * 60 * 60 * 1000
                 };
-                const offset = durationMap[this.current] || durationMap['1w'];
-                return new Date(now - offset).toISOString();
+                return durationMap[this.current] || durationMap['1w'];
+            },
+
+            // Get fetch time range (viewport + 6 hour buffer for zooming out)
+            getFetchDuration() {
+                return this.getViewportDuration() + this.FETCH_BUFFER_MS;
+            },
+
+            // Get viewport start time (for initial chart display)
+            getViewportStart() {
+                const now = new Date();
+                return new Date(now - this.getViewportDuration()).toISOString();
+            },
+
+            // Get fetch start time (for API data fetching)
+            getUpdatedAfter() {
+                const now = new Date();
+                return new Date(now - this.getFetchDuration()).toISOString();
             },
 
             _syncToURL() {
@@ -1548,6 +1565,7 @@
 
                     // Update CONFIG with new time range
                     CONFIG.updatedAfter = DurationState.getUpdatedAfter();
+                    CONFIG.viewportStart = DurationState.getViewportStart();
 
                     // Re-fetch data with new duration
                     await fetchAndRender(false);
@@ -2234,7 +2252,11 @@
                 DurationState.loadFromURL(urlState.duration);
                 // Update CONFIG with duration from URL
                 CONFIG.updatedAfter = DurationState.getUpdatedAfter();
-                console.log(`Using duration from URL: ${urlState.duration}, updatedAfter: ${CONFIG.updatedAfter}`);
+                CONFIG.viewportStart = DurationState.getViewportStart();
+                console.log(`Using duration from URL: ${urlState.duration}, updatedAfter: ${CONFIG.updatedAfter}, viewportStart: ${CONFIG.viewportStart}`);
+            } else {
+                // Set initial viewport on first load
+                CONFIG.viewportStart = DurationState.getViewportStart();
             }
 
             // Initialize GANTT chart

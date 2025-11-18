@@ -184,6 +184,30 @@ class D3GanttChart {
             .domain(timeExtent)
             .range([0, width]);
 
+        // If viewport start time is provided and this is initial render, zoom to viewport
+        if (this.config.viewportStart && !this.hasInitialViewportSet) {
+            const viewportStartTime = new Date(this.config.viewportStart);
+            const now = new Date();
+
+            // Calculate zoom transform to show viewport range
+            const fullDomain = timeExtent;
+            const viewportDomain = [viewportStartTime, now];
+
+            // Calculate scale factor (k) to fit viewport in the full domain
+            const fullRange = fullDomain[1] - fullDomain[0];
+            const viewportRange = viewportDomain[1] - viewportDomain[0];
+            const k = fullRange / viewportRange;
+
+            // Calculate translation (x) to center the viewport
+            const fullStart = this.baseXScale(fullDomain[0]);
+            const viewportStart = this.baseXScale(viewportDomain[0]);
+            const x = -(viewportStart * k - fullStart);
+
+            // Apply initial viewport transform
+            this.currentTransform = d3.zoomIdentity.translate(x, 0).scale(k);
+            this.hasInitialViewportSet = true;
+        }
+
         // Apply current zoom transform to scale
         this.xScale = this.currentTransform.rescaleX(this.baseXScale);
 
