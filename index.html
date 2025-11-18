@@ -948,7 +948,8 @@
             <nav id="duration-controls" class="control-section" style="display: none;" role="region" aria-labelledby="duration-heading">
                 <h2 id="duration-heading">Time Range</h2>
                 <div class="duration-buttons-row">
-                    <button class="duration-button active" data-duration="6h" aria-label="Show last 6 hours">6 Hours</button>
+                    <button class="duration-button active" data-duration="1h" aria-label="Show last 1 hour">1 Hour</button>
+                    <button class="duration-button" data-duration="6h" aria-label="Show last 6 hours">6 Hours</button>
                     <button class="duration-button" data-duration="1d" aria-label="Show last 1 day">1 Day</button>
                     <button class="duration-button" data-duration="2d" aria-label="Show last 2 days">2 Days</button>
                     <button class="duration-button" data-duration="1w" aria-label="Show last 1 week">1 Week</button>
@@ -1395,7 +1396,7 @@
 
         // Duration state encapsulation
         const DurationState = {
-            current: '6h',
+            current: '1h',
 
             set(duration) {
                 this.current = duration;
@@ -1403,12 +1404,13 @@
             },
 
             loadFromURL(duration) {
-                this.current = duration || '6h';
+                this.current = duration || '1h';
             },
 
             getUpdatedAfter() {
                 const now = new Date();
                 const durationMap = {
+                    '1h': 1 * 60 * 60 * 1000,
                     '6h': 6 * 60 * 60 * 1000,
                     '1d': 24 * 60 * 60 * 1000,
                     '2d': 2 * 24 * 60 * 60 * 1000,
@@ -1534,6 +1536,7 @@
 
                     // Announce to screen readers
                     const durationLabels = {
+                        '1h': '1 hour',
                         '6h': '6 hours',
                         '1d': '1 day',
                         '2d': '2 days',
