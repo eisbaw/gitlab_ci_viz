@@ -11,8 +11,66 @@ This tool provides CI/CD Activity Intelligence by transforming GitLab's project-
 - Understand timing and duration of pipelines across the organization
 - Monitor pipeline execution in real-time with auto-refresh
 
+## Features
+
+### Visualization
+
+- **D3-based Interactive GANTT Timeline**: Custom SVG-based visualization with smooth zoom and pan
+- **Color-Coded Jobs**: Projects and runners use consistent hash-based colors for easy identification
+- **Expandable Pipeline/Job Hierarchy**: Click pipelines to expand and view individual jobs
+- **User Avatars**: Visual identification of who triggered each pipeline
+- **Runner Contention Analysis**: Background shading shows when runners are overloaded
+  - Low contention (2-3 concurrent): Light yellow
+  - Medium contention (4): Orange
+  - High contention (5-7): Dark orange
+  - Critical contention (8+): Red
+- **Status Indicators**: Color-coded outlines for success (green), failure (red), running (yellow)
+- **Duration Labels**: Human-readable duration displayed on timeline bars
+- **Rich Tooltips**: Hover for detailed information (commit SHA, branch/tag, queue time, failure details, runner info)
+
+### Navigation & Interaction
+
+- **Keyboard Shortcuts**:
+  - Arrow keys: Pan left/right/up/down
+  - Tab: Navigate through pipelines and jobs
+  - Space: Expand/collapse pipelines
+  - Enter: Open pipeline/job in GitLab
+- **Mouse Controls**:
+  - Scroll wheel: Zoom in/out
+  - Click + drag: Pan timeline
+  - Click pipeline boxes: Open in GitLab
+- **Viewport/Fetch Decoupling**: Fetches 6 hours beyond viewport for smooth zoom-out without re-fetching
+- **URL State Sharing**: Filters, search terms, and duration settings persist to URL for shareable links
+
+### Data Management
+
+- **Auto-Refresh**: Configurable polling interval (default 60s) with countdown display
+- **Manual Refresh**: Button to fetch latest data on demand
+- **Client-Side Filtering**: Filter by pipeline status (success, failed, running, pending, cancelled, skipped, manual)
+- **Job Name Search**: Real-time search to find specific jobs across all pipelines
+- **Duration Selector**: Quick buttons for 1h, 6h, 1d, 2d, 1w time ranges
+- **Multi-Project Support**: View activity across entire GitLab groups or specific project lists
+
+### Developer Experience
+
+- **Zero Python Dependencies**: Backend uses only Python stdlib - no pip install required
+- **Nix-Based Reproducible Environment**: Guaranteed consistent dev environment across machines
+- **Three Authentication Methods**: Environment variables, SSH token creation, or glab CLI
+- **Performance Benchmarking**: Built-in tools to measure rendering and transformation performance
+- **Chrome DevTools Integration**: Project-local Chrome profile for isolated testing
+- **Comprehensive Keyboard Help**: Press `?` in app for full shortcut reference
+
+### Architecture
+
+- **Modular Frontend**: 6 JavaScript modules with clear separation of concerns
+- **Domain Model**: Clean data transformation from GitLab API to application model
+- **9-Layer SVG Rendering**: Optimized layer structure for performance
+- **Stateless Backend**: Simple Python server with no persistent state
+- **Offline-Capable**: All assets served locally, no external CDN dependencies
+
 ## Table of Contents
 
+- [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
@@ -52,7 +110,7 @@ Before installing, verify you have the following:
 4. **Modern web browser**
    - Any browser with ES6+ JavaScript support
    - Chrome 60+, Firefox 60+, Safari 12+, Edge 79+
-   - Required for vis.js Timeline rendering
+   - Required for D3.js visualization rendering
 
 #### Optional but Recommended
 
@@ -75,7 +133,7 @@ cd gitlab_ci_viz
 
 # Enter development environment (automatically installs all dependencies)
 nix-shell
-# This provides: Python 3.12.8, glab 1.51.0, pytest, just
+# This provides: Python 3.12+, glab 1.51+, pytest, just
 
 # Authenticate with GitLab (first-run only)
 glab auth login
@@ -114,23 +172,54 @@ glab auth login
 
 ### First-Run Setup: GitLab Authentication
 
-The tool requires a GitLab authentication token to access the API. The `glab` CLI manages this for you.
+The tool requires a GitLab authentication token to access the API. The backend supports three authentication methods, tried in this order:
 
-#### Step 1: Authenticate with GitLab
+#### Authentication Methods (Priority Order)
+
+**Method 1: Environment Variables (Highest Priority)**
+
+Set one of these environment variables:
+
+```bash
+export GITLAB_TOKEN="your-token-here"
+# OR
+export GITLAB_AUTH_TOKEN="your-token-here"
+
+# Then start the server
+python serve.py --group 12345 --since "2 days ago"
+```
+
+**Best for:** Docker containers, CI/CD environments, scripted deployments
+
+**Method 2: SSH Token Creation (Second Priority)**
+
+Configure SSH-based token creation via `~/.config/gitlab_ci_viz/gitlab.yml`:
+
+```bash
+# Create config directory
+mkdir -p ~/.config/gitlab_ci_viz
+
+# Create config file
+cat > ~/.config/gitlab_ci_viz/gitlab.yml << 'EOF'
+hostname: gitlab.example.com
+ssh_port: 22
+ssh_user: git
+EOF
+```
+
+The tool will SSH to your GitLab instance and create a short-lived token automatically.
+
+**Best for:** Self-hosted GitLab with SSH access, corporate environments
+
+**Method 3: glab CLI (Easiest for New Users)**
+
+Use the GitLab CLI to manage authentication:
 
 ```bash
 glab auth login
 ```
 
 **Note**: `glab auth login` is idempotent - running it multiple times will re-authenticate safely. Your previous token will be replaced.
-
-**Security Note**: Your GitLab token will be:
-- Injected into HTML served to your browser (localhost only)
-- Visible in browser DevTools and page source
-- NOT persisted to disk or logged
-- Cleared when browser is closed
-
-This is the expected security model for a localhost development tool. See [Security](#security) for details.
 
 You'll be prompted to choose an authentication method:
 
@@ -156,37 +245,32 @@ You'll be prompted to choose an authentication method:
 1. Go to GitLab → Settings → Access Tokens
 2. Create token with **`read_api`** scope (minimum required - other scopes are fine but not needed)
 3. Copy the token (you'll only see it once!)
-4. Paste when prompted by `glab auth login`
+4. Use via environment variable or paste to `glab auth login`
 
-#### Step 2: Verify Authentication
+**Best for:** Quick setup, gitlab.com users, development workstations
+
+**Security Note**: Your GitLab token will be:
+- Injected into HTML served to your browser (localhost only)
+- Visible in browser DevTools and page source
+- NOT persisted to disk or logged
+- Cleared when browser is closed
+
+This is the expected security model for a localhost development tool. See [Security](#security) for details.
+
+#### Verify Authentication
+
+After setting up authentication via any method, verify it works:
 
 ```bash
-# Check authentication status
+# If using glab, check status
 glab auth status
-```
 
-Expected output:
-```
-✓ Logged in to gitlab.com as username
-✓ Token scopes: api, read_api, read_user, write_repository
-```
+# Or test directly with GitLab API
+# Method 1: Using environment variable
+curl -H "PRIVATE-TOKEN: $GITLAB_TOKEN" "https://gitlab.com/api/v4/version"
 
-**Minimum required scope:** `read_api` (as configured above)
-
-#### Step 3: Test Token Access
-
-```bash
-# Test that glab can retrieve your token
-glab auth token
-```
-
-Should output your token (keep this private!). If you see an error, authentication failed.
-
-#### Step 4: Verify Token Works with GitLab API
-
-```bash
-# Test that your token can access GitLab API
-TOKEN=$(glab auth token)
+# Method 2: Using glab token
+TOKEN=$(glab auth token 2>/dev/null)
 curl -H "PRIVATE-TOKEN: $TOKEN" "https://gitlab.com/api/v4/version"
 ```
 
@@ -195,7 +279,20 @@ Expected output: JSON with GitLab version info
 {"version":"16.7.0","revision":"abc123"}
 ```
 
-**If this fails**, don't proceed to serve.py - fix authentication first. See [Troubleshooting](#troubleshooting).
+**If this fails**, don't proceed - fix authentication first. See [Troubleshooting](#troubleshooting).
+
+#### Test the Tool
+
+Once authenticated, test that the server can obtain the token:
+
+```bash
+# Start the server (it will fetch the token automatically)
+python serve.py --help
+```
+
+Expected: Help output showing all CLI options
+
+**If you see "Failed to get GitLab token"**, check your authentication setup.
 
 ### Smoke Test: Verify Installation
 
@@ -231,9 +328,11 @@ python serve.py --help | grep -E '(--group|--projects|--since|--port|--gitlab-ur
 
 | Component | Minimum Version | Recommended | Provided by Nix |
 |-----------|----------------|-------------|-----------------|
-| Python    | 3.8.0          | 3.12+       | 3.12.8          |
-| glab      | 1.30.0         | 1.51+       | 1.51.0          |
+| Python    | 3.8.0          | 3.12+       | 3.12+ (current) |
+| glab      | 1.30.0         | 1.51+       | 1.51+ (current) |
 | Browser   | Any modern browser with ES6 support | Chrome/Firefox latest | N/A |
+
+*Note: Nix package versions shown reflect current nixpkgs channel and may update over time.*
 
 ## Quick Start
 
@@ -422,10 +521,10 @@ GitLab CI GANTT Visualizer uses a minimal backend + rich frontend architecture:
 ┌─────────────────────────────────────────────────────────┐
 │                      Browser                            │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │  JavaScript Frontend (index.html)                │   │
+│  │  JavaScript Frontend (6 modules + index.html)    │   │
 │  │  - Fetches data from GitLab API v4               │   │
-│  │  - Transforms pipelines → GANTT items            │   │
-│  │  - Renders vis.js Timeline                       │   │
+│  │  - Transforms pipelines → domain model           │   │
+│  │  - Renders D3.js GANTT visualization             │   │
 │  │  - Auto-refreshes periodically                   │   │
 │  └──────────────────────────────────────────────────┘   │
 │           ↑                             ↓                │
@@ -442,17 +541,19 @@ GitLab CI GANTT Visualizer uses a minimal backend + rich frontend architecture:
      └─────────────┘             └──────────────┘
                                         │
                                         ↓
-                                ┌──────────────┐
-                                │ glab CLI     │
-                                │ (auth token) │
-                                └──────────────┘
+                        ┌───────────────────────────────┐
+                        │ Token Sources (priority order)│
+                        │ 1. Env vars (GITLAB_TOKEN)    │
+                        │ 2. SSH token creation         │
+                        │ 3. glab CLI config            │
+                        └───────────────────────────────┘
 ```
 
 ### Backend Responsibilities
 
 The Python backend (`serve.py`) is intentionally minimal:
 
-1. **Obtain GitLab token**: Execute `glab auth token` command
+1. **Obtain GitLab token**: Try environment variables, SSH token creation, or glab CLI (in that order)
 2. **Parse CLI arguments**: Validate configuration (group/projects, time range, port)
 3. **Inject configuration**: Embed token and config as JavaScript in HTML
 4. **Serve static files**: HTTP server for HTML, CSS, JS assets
@@ -465,17 +566,30 @@ The Python backend (`serve.py`) is intentionally minimal:
 
 ### Frontend Responsibilities
 
-The JavaScript frontend (`index.html`) handles all application logic:
+The JavaScript frontend (6 modules + `index.html`) handles all application logic:
 
+**Module Architecture:**
+- `logger.js` - Logging infrastructure
+- `error-formatter.js` - User-friendly error messages
+- `api-client.js` - GitLab API v4 client
+- `data-transformer.js` - Domain model (GroupKey, Pipeline, Job)
+- `contention-analyzer.js` - Runner contention calculation
+- `d3-gantt.js` - D3.js-based GANTT rendering
+
+**Data Flow:**
 1. **Query GitLab API v4**: Direct API calls from browser
    - Fetch projects from group
    - Fetch pipelines for each project
    - Fetch jobs for each pipeline
-2. **Transform data**: Convert GitLab API responses to vis.js format
+2. **Transform data**: Convert GitLab API responses to domain model
    - Group by user
+   - Analyze runner contention
    - Create collapsible containers
    - Calculate timeline positions
-3. **Render visualization**: Interactive GANTT chart using vis.js Timeline
+3. **Render visualization**: Interactive GANTT chart using D3.js v7
+   - 9-layer SVG rendering (grid, contention, bars, avatars, etc.)
+   - Zoom/pan/keyboard navigation
+   - Color-coded by project and runner
 4. **Auto-refresh**: Poll API periodically and update display
 
 ### Why This Architecture?
@@ -497,12 +611,14 @@ The JavaScript frontend (`index.html`) handles all application logic:
 
 ### Data Flow
 
-1. **Startup**: `serve.py` obtains token via `glab auth token`
+1. **Startup**: `serve.py` obtains token via environment variables, SSH, or glab CLI
 2. **Configuration injection**: Token + config embedded in HTML as `CONFIG` object
 3. **Browser loads**: Fetch `index.html` with injected config
 4. **Initial data fetch**: JavaScript queries GitLab API for all configured projects
-5. **Render timeline**: Transform API data → vis.js DataSet → Timeline render
-6. **Auto-refresh loop**: Poll API every N seconds, update timeline incrementally
+5. **Transform to domain**: API responses → GroupKey/Pipeline/Job objects
+6. **Analyze contention**: Calculate runner contention periods
+7. **Render timeline**: D3.js renders 8-layer SVG GANTT chart
+8. **Auto-refresh loop**: Poll API every N seconds, update timeline incrementally
 
 ## Troubleshooting
 
@@ -945,8 +1061,11 @@ just
 # Run tests with coverage
 just test
 
-# Run linting (not yet configured)
+# Run linting
 just lint
+
+# Run performance benchmarks
+just benchmark
 
 # Start development server with custom args
 just run --group 12345 --since "2 days ago"
@@ -954,8 +1073,10 @@ just run --group 12345 --since "2 days ago"
 # Clean temporary files and caches
 just clean
 
-# Update vis.js library to new version
-just update-visjs 8.4.0
+# Chrome DevTools integration
+just chrome              # Launch Chrome with project profile
+just chrome-devtools     # Launch with DevTools open
+just clean-chrome        # Clean Chrome profile data
 ```
 
 ### Running Tests
@@ -979,17 +1100,25 @@ open htmlcov/index.html
 ```
 gitlab_ci_viz/
 ├── serve.py              # Python backend (stdlib only)
-├── index.html            # Frontend application
-├── static/               # Static assets
-│   ├── vis-timeline-graph2d-8.3.1.min.js
-│   └── vis-timeline-graph2d-8.3.1.min.css
+├── index.html            # Frontend application orchestration
+├── static/               # JavaScript modules and assets
+│   ├── logger.js                  # Logging infrastructure
+│   ├── error-formatter.js         # Error formatting
+│   ├── api-client.js              # GitLab API client
+│   ├── data-transformer.js        # Domain model
+│   ├── contention-analyzer.js     # Runner contention analysis
+│   └── d3-gantt.js                # D3.js GANTT renderer
+├── docs/                 # Architecture documentation
+│   └── architecture.md
 ├── shell.nix             # Nix development environment
 ├── justfile              # Task automation
-├── test_serve.py         # Unit tests
-├── test_integration.py   # Integration tests
+├── test/                 # Test suite
+│   ├── test_serve.py              # Backend unit tests
+│   ├── test_integration.py        # Integration tests
+│   └── run_performance_benchmarks.py  # Performance tests
 ├── backlog/              # Project management
-│   ├── tasks/           # Task tracking
-│   └── docs/            # Documentation
+│   ├── tasks/                     # Task tracking
+│   └── docs/                      # Domain documentation
 └── README.md            # This file
 ```
 
@@ -1228,46 +1357,58 @@ Measured from page load to interactive timeline (includes API fetch + transforma
 
 ## Dependencies
 
-### vis.js Timeline Library
+### D3.js Visualization Library
 
-- **Version**: 8.3.1
-- **Downloaded**: 2025-11-13
-- **Build**: Standalone (no external dependencies)
-- **Files**:
-  - `static/vis-timeline-graph2d-8.3.1.min.js` (529KB)
-  - `static/vis-timeline-graph2d-8.3.1.min.css` (20KB)
-- **Source**: https://unpkg.com/vis-timeline@8.3.1/
+- **Version**: 7 (latest)
+- **Source**: CDN (https://d3js.org/d3.v7.min.js)
+- **Loading**: Loaded from CDN in `index.html`
+- **Size**: ~250KB (minified)
+- **License**: BSD 3-Clause
 
-#### API Features Used
+#### Why D3.js?
 
-The following vis.js Timeline API features are used in this project:
+D3.js was chosen over traditional timeline libraries (like vis.js) for:
 
-- `vis.Timeline` - Main timeline component
-- `vis.DataSet` - Data management for timeline items and groups
-- Timeline options: width, height, grouping
-- Item properties: id, content, start, end
-- (Additional features will be documented as implementation progresses)
+1. **Flexibility**: Full control over SVG rendering for custom visualizations
+2. **Performance**: Efficient rendering with virtual DOM and layer caching
+3. **Customization**: Easy to add custom features (runner contention, avatars, clickable areas)
+4. **Modern**: Active development, excellent documentation, large community
+5. **Lightweight**: Only load what we use, no unused features
 
-#### Updating vis.js
+#### D3.js Features Used
 
-To update to a newer version of vis-timeline:
+The project uses these D3.js modules:
 
-```bash
-just update-visjs VERSION
+- **d3-selection**: DOM manipulation and SVG element creation
+- **d3-scale**: Time scales for X-axis, linear scales for Y-axis
+- **d3-axis**: Automatic axis generation with time formatting
+- **d3-zoom**: Pan and zoom interactions
+- **d3-drag**: Drag interactions for panning
+- **d3-color**: Color manipulation for runner hashing
+- **d3-time-format**: Human-readable time formatting
+
+#### Custom D3 Implementation
+
+`static/d3-gantt.js` implements a custom GANTT chart with:
+
+- **9-layer SVG architecture**: Separate layers for grid, contention, backgrounds, overlays, bars, avatars, current time line, axis, labels
+- **Row-based layout**: Flat row structure for pipelines and jobs
+- **Zoom/pan**: Smooth interactions with D3 zoom behavior
+- **Performance optimizations**: Row caching, text measurement cache, RequestAnimationFrame
+- **Color management**: Consistent project and runner colors via hashing
+
+#### Updating D3.js
+
+D3.js is loaded from CDN, so updates are automatic when D3 releases new versions. To pin to a specific version:
+
+```html
+<!-- In index.html, change: -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- To specific version: -->
+<script src="https://d3js.org/d3.v7.9.0.min.js"></script>
 ```
 
-Where VERSION is the desired version (e.g., `8.4.0`).
-
-This will:
-1. Download the new version files
-2. Rename files to include the version number
-3. Update this README with the new version and date
-4. Prompt you to update HTML templates
-
-**Important**: After updating, manually verify:
-- All HTML files use the new versioned filenames
-- The timeline still renders correctly
-- No breaking API changes affect our code
+**Note**: Major version changes (v7 → v8) may require code updates. Test thoroughly after upgrading.
 
 ### Python Backend: Standard Library Only
 

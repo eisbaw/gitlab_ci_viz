@@ -2,16 +2,14 @@
 """
 Take screenshots of localhost:8000 using Selenium and headless Chromium
 """
+
 import sys
 import os
 import time
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
+
 
 def take_screenshots(commit_sha, wait_time=30):
     """Take screenshots of the GitLab CI visualization"""
@@ -36,7 +34,7 @@ def take_screenshots(commit_sha, wait_time=30):
     driver = webdriver.Chrome(options=chrome_options)
 
     try:
-        print(f"Loading http://localhost:8000...")
+        print("Loading http://localhost:8000...")
         start_time = time.time()
         driver.get("http://localhost:8000")
 
@@ -67,6 +65,7 @@ def take_screenshots(commit_sha, wait_time=30):
     finally:
         driver.quit()
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python take_screenshot.py <commit-sha> [wait_time]")
@@ -76,5 +75,5 @@ if __name__ == "__main__":
     wait_time = int(sys.argv[2]) if len(sys.argv) > 2 else 30
 
     load_time = take_screenshots(commit_sha, wait_time)
-    print(f"\\nScreenshots captured successfully!")
+    print("\\nScreenshots captured successfully!")
     print(f"Load time: {load_time:.2f}s")
