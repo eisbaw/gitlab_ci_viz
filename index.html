@@ -980,6 +980,10 @@
                     <button class="zoom-button" id="zoom-in" aria-label="Zoom in on timeline">Zoom In (+)</button>
                     <button class="zoom-button" id="zoom-out" aria-label="Zoom out on timeline">Zoom Out (-)</button>
                     <button class="zoom-button" id="zoom-reset" aria-label="Reset zoom to default view">Reset View</button>
+                    <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82em; margin-left: 12px;">
+                        <input type="checkbox" id="expand-new-pipelines-checkbox" style="cursor: pointer; width: 14px; height: 14px;" aria-label="Auto-expand new pipelines discovered during refresh">
+                        <span>Auto-expand new pipelines</span>
+                    </label>
                 </div>
                 <span class="zoom-info">Scroll to zoom, drag or arrows to pan</span>
             </nav>
@@ -1038,12 +1042,6 @@
                         <div class="job-search-input">
                             <input type="text" id="job-search-input" placeholder="Search job names (e.g., 'build', 'test')..." aria-label="Search job names">
                             <button id="clear-job-search" aria-label="Clear job search">Clear</button>
-                        </div>
-                        <div style="margin-top: 8px;">
-                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82em;">
-                                <input type="checkbox" id="expand-new-pipelines-checkbox" style="cursor: pointer; width: 14px; height: 14px;" aria-label="Auto-expand new pipelines discovered during refresh">
-                                <span>Auto-expand new pipelines</span>
-                            </label>
                         </div>
                     </div>
                 </div>
@@ -1276,7 +1274,7 @@
                         filters: new Set(filters),
                         jobSearch: params.get('jobSearch') || '',
                         duration: params.get('duration') || '6h',
-                        expandNew: params.get('expandNew') || 'false'
+                        expandNew: params.get('expandNew') || 'true'
                     };
                 }
 
@@ -1285,7 +1283,7 @@
                     filters: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
                     jobSearch: '',
                     duration: params.get('duration') || '6h',
-                    expandNew: params.get('expandNew') || 'false'
+                    expandNew: params.get('expandNew') || 'true'
                 };
             },
 
@@ -1315,9 +1313,9 @@
                     params.set('duration', state.duration);
                 }
 
-                // Save expandNew (only if not default)
-                if (state.expandNew === true || state.expandNew === 'true') {
-                    params.set('expandNew', 'true');
+                // Save expandNew (only if not default - default is now true)
+                if (state.expandNew === false || state.expandNew === 'false') {
+                    params.set('expandNew', 'false');
                 }
 
                 // Update URL without reload
@@ -1482,7 +1480,7 @@
 
         // State for auto-expanding new pipelines
         const ExpandNewPipelinesState = {
-            enabled: false,
+            enabled: true,
             previousPipelineIds: new Set(),
 
             toggle() {
