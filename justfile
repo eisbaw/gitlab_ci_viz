@@ -34,7 +34,24 @@ lint:
     ruff check .
     ruff format --check .
 
-# Run the server, then connect on localhost:8000
+# Run all tests (Python + Node.js)
+test-all:
+    pytest -v --cov=. --cov-report=term-missing
+    npm test
+
+# Run Node.js tests only
+test-node:
+    npm test
+
+# Run mock GitLab API server standalone
+mock-server PORT="8001":
+    python mock_gitlab_server.py --port {{PORT}}
+
+# Run visualization server with mock GitLab (development mode)
+run-mock *ARGS:
+    python serve.py --gitlab-url mock --group 1 --since "2 days ago" {{ ARGS }}
+
+# Run the server with real GitLab instance
 run *ARGS:
     python serve.py --group example-group --since '2 days ago' --gitlab-url https://gitlab.example.com {{ ARGS }}
 

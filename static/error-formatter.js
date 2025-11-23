@@ -74,6 +74,11 @@ function formatError(error) {
     return message;
 }
 
-// Export for use in other modules
-window.escapeHTML = escapeHTML;
-window.formatError = formatError;
+// Export to global scope for both browser and Node.js
+if (typeof window !== 'undefined') {
+    window.escapeHTML = escapeHTML;
+    window.formatError = formatError;
+} else if (typeof global !== 'undefined') {
+    global.escapeHTML = escapeHTML;
+    global.formatError = formatError;
+}

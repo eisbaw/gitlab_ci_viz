@@ -12,14 +12,19 @@ Uses only Python standard library (no external dependencies).
 """
 
 import argparse
+import atexit
 import json
 import logging
 import re
+import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import urlopen
+from urllib.error import URLError
 
 # Configure logging to stderr with timestamp and level
 logging.basicConfig(
@@ -194,7 +199,6 @@ def _create_token_via_ssh(ssh_config):
     Creates a token named 'gitlab_ci_viz' with scopes 'read_repository,read_api'
     that expires in 1 day.
     """
-    import subprocess
 
     hostname = ssh_config["hostname"]
     port = ssh_config["ssh_port"]
@@ -451,6 +455,22 @@ def validate_arguments(args):
     """Validate parsed arguments and fail fast on invalid input."""
     logging.debug("Validating CLI arguments")
 
+    # Handle mock mode
+    if args.gitlab_url == "mock":
+        args.is_mock_mode = True
+        args.gitlab_url = "http://localhost:8001"
+        logging.info("Mock mode enabled: using http://localhost:8001")
+    else:
+        args.is_mock_mode = False
+
+        # Validate GitLab URL for non-mock mode
+        parsed_url = urlparse(args.gitlab_url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            logging.error(
+                f"Invalid GitLab URL: {args.gitlab_url}. URL must include scheme (http/https) and hostname."
+            )
+            sys.exit(1)
+
     # Validate port range
     if not (1 <= args.port <= 65535):
         logging.error(f"Invalid port {args.port}. Must be between 1 and 65535.")
@@ -460,14 +480,6 @@ def validate_arguments(args):
     if args.refresh_interval < 0 or args.refresh_interval > 86400:
         logging.error(
             f"Invalid refresh interval {args.refresh_interval}. Must be 0-86400 seconds (0 disables auto-refresh, max 24 hours)."
-        )
-        sys.exit(1)
-
-    # Validate GitLab URL
-    parsed_url = urlparse(args.gitlab_url)
-    if not parsed_url.scheme or not parsed_url.netloc:
-        logging.error(
-            f"Invalid GitLab URL: {args.gitlab_url}. URL must include scheme (http/https) and hostname."
         )
         sys.exit(1)
 
@@ -616,10 +628,64 @@ def main():
     else:
         logging.info("Binding to localhost only (127.0.0.1) for security")
 
-    # Get GitLab token
-    print("Obtaining GitLab authentication token...")
-    token = get_gitlab_token(args.gitlab_url)
-    print("Token obtained successfully.")
+    # Start mock GitLab server if in mock mode
+    mock_server_process = None
+    if getattr(args, "is_mock_mode", False):
+        import subprocess
+
+        logging.info("Starting mock GitLab server on port 8001...")
+        print("Starting mock GitLab API server...")
+
+        mock_server_process = subprocess.Popen(
+            [sys.executable, "mock_gitlab_server.py", "--port", "8001"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        # Register cleanup handler to ensure mock server is stopped on exit
+        def cleanup_mock_server():
+            if mock_server_process and mock_server_process.poll() is None:
+                logging.info("Cleanup: Terminating mock server")
+                mock_server_process.terminate()
+                try:
+                    mock_server_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logging.warning(
+                        "Cleanup: Mock server did not stop gracefully, forcing shutdown"
+                    )
+                    mock_server_process.kill()
+
+        atexit.register(cleanup_mock_server)
+
+        # Wait for mock server to become responsive
+        def wait_for_server(url, timeout=10):
+            """Poll server until responsive or timeout"""
+            start = time.time()
+            while time.time() - start < timeout:
+                try:
+                    response = urlopen(url, timeout=1)
+                    if response.status == 200:
+                        return True
+                except (URLError, OSError):
+                    time.sleep(0.1)
+            return False
+
+        health_check_url = "http://localhost:8001/api/v4/groups/1/projects"
+        logging.info("Waiting for mock server to become responsive...")
+        if not wait_for_server(health_check_url):
+            mock_server_process.kill()
+            raise RuntimeError("Mock server failed to start within 10 seconds")
+
+        logging.info("Mock GitLab server started")
+        print("Mock GitLab server started at http://localhost:8001")
+
+        # Use dummy token for mock mode
+        token = "mock-token-12345"
+    else:
+        # Get GitLab token for real GitLab instance
+        print("Obtaining GitLab authentication token...")
+        token = get_gitlab_token(args.gitlab_url)
+        print("Token obtained successfully.")
 
     # Generate config JavaScript
     logging.debug("Generating JavaScript configuration")
@@ -653,6 +719,19 @@ def main():
     except KeyboardInterrupt:
         logging.info("Shutdown signal received")
         print("\n\nShutting down server...")
+
+        # Stop mock server if running
+        if mock_server_process:
+            logging.info("Stopping mock GitLab server...")
+            print("Stopping mock GitLab server...")
+            mock_server_process.terminate()
+            try:
+                mock_server_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logging.warning("Mock server did not stop gracefully, forcing shutdown")
+                mock_server_process.kill()
+            logging.info("Mock GitLab server stopped")
+
         httpd.server_close()
         logging.info("Server stopped successfully")
         print("Server stopped.")

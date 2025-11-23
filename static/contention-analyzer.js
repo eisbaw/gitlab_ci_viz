@@ -224,7 +224,7 @@ const ContentionAnalyzer = (function() {
     };
 })();
 
-// Export for Node.js testing environment
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ContentionAnalyzer;
+// Export to global scope for Node.js testing
+if (typeof global !== 'undefined' && typeof window === 'undefined') {
+    global.ContentionAnalyzer = ContentionAnalyzer;
 }

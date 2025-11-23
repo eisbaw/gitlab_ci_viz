@@ -126,4 +126,8 @@ if (typeof window !== 'undefined') {
     window.Logger = Logger;
     window.LogLevel = LogLevel;
     window.logger = logger;
+} else if (typeof global !== 'undefined') {
+    global.Logger = Logger;
+    global.LogLevel = LogLevel;
+    global.logger = logger;
 }

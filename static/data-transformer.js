@@ -770,6 +770,12 @@ class DataTransformer {
     }
 }
 
-// Export for use in other modules
-// Note: This uses global scope since we're not using ES modules
-window.DataTransformer = DataTransformer;
+// Export to global scope for both browser and Node.js
+if (typeof window !== 'undefined') {
+    window.DataTransformer = DataTransformer;
+} else if (typeof global !== 'undefined') {
+    global.DataTransformer = DataTransformer;
+    global.Pipeline = Pipeline;
+    global.Job = Job;
+    global.GroupKey = GroupKey;
+}

@@ -59,6 +59,63 @@ nix-shell --run "just test"   # All tests with coverage
 - 86% overall coverage (serve.py: 77%, test_serve.py: 99%)
 - Zero ruff violations
 
+## JavaScript Testing
+
+**Approach:**
+- Node.js 20+ built-in test runner (no external dependencies)
+- Tests located in `test/node/` directory
+- Mock fixtures in `test/node/fixtures/`
+
+**Running JavaScript Tests:**
+```bash
+nix-shell --run "npm test"        # Run all Node.js tests
+nix-shell --run "just test-node"  # Same via justfile
+nix-shell --run "just test-all"   # Run both Python and Node.js tests
+```
+
+**Module System Status:**
+⚠️ Node.js testing infrastructure is in place but needs module system refinement. The project uses ES6 modules (`"type": "module"` in package.json), but JavaScript files export in browser-compatible format. Conditional CommonJS exports have been added to all modules (api-client.js, data-transformer.js, logger.js, error-formatter.js, contention-analyzer.js), but further work is needed to resolve ES6/CommonJS compatibility.
+
+## Mock GitLab Server
+
+**Purpose:**
+Enables development and testing without a real GitLab instance. The mock server emulates GitLab API v4 with realistic, dynamically updating pipelines and jobs.
+
+**Features:**
+- **Realistic Data:** 3 projects, 30 pipelines (10 per project), 90 jobs
+- **Dynamic Updates:** Job statuses transition every 5 seconds (pending → running → success/failed)
+- **GitLab API v4 Endpoints:** Projects, pipelines, jobs with proper pagination
+- **Standalone Mode:** Runs independently on port 8001
+
+**Running Mock Server:**
+```bash
+# Integrated mode (mock server starts automatically)
+nix-shell --run "just run-mock"
+# Or explicitly:
+nix-shell --run "python serve.py --gitlab-url mock --group 1 --since '2 days ago'"
+
+# Standalone mode (server only, for testing API responses)
+nix-shell --run "just mock-server"
+# Or with custom port:
+nix-shell --run "just mock-server PORT=9999"
+```
+
+**Mock Mode Behavior:**
+- When `--gitlab-url mock` is specified, serve.py automatically:
+  1. Detects mock mode and sets URL to `http://localhost:8001`
+  2. Starts mock_gitlab_server.py as subprocess
+  3. Uses dummy authentication token
+  4. Gracefully shuts down mock server on exit
+
+**Implementation:**
+- `mock_gitlab_server.py` - Standalone Python module (478 lines)
+- `MockDataStore` - Generates projects, pipelines, jobs
+- `DynamicJobUpdater` - Background thread updating job statuses
+- `MockGitLabHandler` - HTTP request handler for API endpoints
+
+**Development Workflow:**
+Use mock mode for rapid development without needing GitLab credentials or network access. The dynamic updates allow testing of real-time pipeline visualization features.
+
 ---
 
 <!-- BACKLOG.MD GUIDELINES START -->

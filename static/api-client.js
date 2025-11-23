@@ -22,32 +22,39 @@ class GitLabAPIClient {
      * @throws {Error} - If config is missing or invalid
      */
     constructor(config) {
+        // Helper to create configuration errors
+        const createConfigError = (message) => {
+            const error = new Error(message);
+            error.name = 'ConfigurationError';
+            return error;
+        };
+
         // Validate config object is provided
         if (!config || typeof config !== 'object' || Array.isArray(config)) {
-            throw new Error('CONFIG object not found. Server configuration missing.');
+            throw createConfigError('CONFIG object not found. Server configuration missing.');
         }
 
         // Validate required fields - check presence first, then type
         if (!config.gitlabToken) {
-            throw new Error('GitLab token is missing or empty');
+            throw createConfigError('GitLab token is missing or empty');
         }
         if (typeof config.gitlabToken !== 'string') {
-            throw new Error('GitLab token must be a string, got ' + typeof config.gitlabToken);
+            throw createConfigError('GitLab token must be a string, got ' + typeof config.gitlabToken);
         }
 
         if (!config.gitlabUrl) {
-            throw new Error('GitLab URL is missing or empty');
+            throw createConfigError('GitLab URL is missing or empty');
         }
         if (typeof config.gitlabUrl !== 'string') {
-            throw new Error('GitLab URL must be a string, got ' + typeof config.gitlabUrl);
+            throw createConfigError('GitLab URL must be a string, got ' + typeof config.gitlabUrl);
         }
 
         // Validate optional fields if provided (allow null)
         if (config.groupId !== undefined && config.groupId !== null && typeof config.groupId !== 'string') {
-            throw new Error('groupId must be a string or null if provided, got ' + typeof config.groupId);
+            throw createConfigError('groupId must be a string or null if provided, got ' + typeof config.groupId);
         }
         if (config.projectIds !== undefined && config.projectIds !== null && !Array.isArray(config.projectIds)) {
-            throw new Error('projectIds must be an array or null if provided, got ' + typeof config.projectIds);
+            throw createConfigError('projectIds must be an array or null if provided, got ' + typeof config.projectIds);
         }
 
         // Store config reference for methods that need groupId/projectIds
@@ -145,7 +152,7 @@ class GitLabAPIClient {
             }
 
             // Re-throw our custom errors (already have context)
-            if (error.name === 'GitLabAPIError') {
+            if (error.errorType) {
                 throw error;
             }
 
@@ -227,7 +234,7 @@ class GitLabAPIClient {
             }
 
             // Re-throw our custom errors (already have context)
-            if (error.name === 'GitLabAPIError') {
+            if (error.errorType) {
                 throw error;
             }
 
@@ -304,7 +311,7 @@ class GitLabAPIClient {
      */
     _createError(name, message) {
         const error = new Error(message);
-        error.name = 'GitLabAPIError';
+        error.name = name;
         error.errorType = name;
         return error;
     }
@@ -417,7 +424,7 @@ class GitLabAPIClient {
                 return await this.getGroupProjects(this.config.groupId);
             } catch (error) {
                 // Wrap error with context instead of mutating
-                if (error.name === 'GitLabAPIError') {
+                if (error.errorType) {
                     const contextError = this._createError(
                         error.errorType,
                         `Failed to fetch projects from group ${this.config.groupId}: ${error.message}`
@@ -466,7 +473,7 @@ class GitLabAPIClient {
             // Only fail if ALL projects failed
             if (succeeded.length === 0) {
                 throw this._createError(
-                    'ConfigurationError',
+                    'ProjectFetchError',
                     `Failed to fetch all ${this.config.projectIds.length} configured projects`
                 );
             }
@@ -573,7 +580,7 @@ class GitLabAPIClient {
                 }
 
                 // Re-throw our custom errors
-                if (error.name === 'GitLabAPIError') {
+                if (error.errorType) {
                     throw error;
                 }
 
@@ -735,7 +742,7 @@ class GitLabAPIClient {
 
         } catch (error) {
             // Re-throw with context
-            if (error.name === 'GitLabAPIError') {
+            if (error.errorType) {
                 throw error;
             }
             throw this._createError(
@@ -974,6 +981,9 @@ class GitLabAPIClient {
 
 }
 
-// Export for use in other modules
-// Note: This uses global scope since we're not using ES modules
-window.GitLabAPIClient = GitLabAPIClient;
+// Export to global scope for both browser and Node.js
+if (typeof window !== 'undefined') {
+    window.GitLabAPIClient = GitLabAPIClient;
+} else if (typeof global !== 'undefined') {
+    global.GitLabAPIClient = GitLabAPIClient;
+}

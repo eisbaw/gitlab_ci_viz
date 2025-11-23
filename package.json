@@ -1,0 +1,18 @@
+{
+  "name": "gitlab-ci-viz",
+  "version": "1.0.0",
+  "description": "GitLab CI Pipeline GANTT Visualizer",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/node/**/*.test.js",
+    "test:watch": "node --test --watch test/node/**/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage test/node/**/*.test.js"
+  },
+  "keywords": ["gitlab", "ci", "gantt", "visualization"],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {}
+}
