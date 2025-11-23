@@ -1039,6 +1039,12 @@
                             <input type="text" id="job-search-input" placeholder="Search job names (e.g., 'build', 'test')..." aria-label="Search job names">
                             <button id="clear-job-search" aria-label="Clear job search">Clear</button>
                         </div>
+                        <div style="margin-top: 8px;">
+                            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.82em;">
+                                <input type="checkbox" id="expand-new-pipelines-checkbox" style="cursor: pointer; width: 14px; height: 14px;" aria-label="Auto-expand new pipelines discovered during refresh">
+                                <span>Auto-expand new pipelines</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -1269,7 +1275,8 @@
                     return {
                         filters: new Set(filters),
                         jobSearch: params.get('jobSearch') || '',
-                        duration: params.get('duration') || '6h'
+                        duration: params.get('duration') || '6h',
+                        expandNew: params.get('expandNew') || 'false'
                     };
                 }
 
@@ -1277,7 +1284,8 @@
                 return {
                     filters: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
                     jobSearch: '',
-                    duration: params.get('duration') || '6h'
+                    duration: params.get('duration') || '6h',
+                    expandNew: params.get('expandNew') || 'false'
                 };
             },
 
@@ -1305,6 +1313,11 @@
                 // Save duration (only if not default)
                 if (state.duration && state.duration !== '6h') {
                     params.set('duration', state.duration);
+                }
+
+                // Save expandNew (only if not default)
+                if (state.expandNew === true || state.expandNew === 'true') {
+                    params.set('expandNew', 'true');
                 }
 
                 // Update URL without reload
@@ -1362,7 +1375,8 @@
                 URLStateManager.debouncedSave({
                     filters: this.active,
                     jobSearch: JobSearchState.searchTerm,
-                    duration: DurationState.current
+                    duration: DurationState.current,
+                    expandNew: ExpandNewPipelinesState.enabled
                 });
             }
         };
@@ -1407,7 +1421,8 @@
                 URLStateManager.debouncedSave({
                     filters: FilterState.active,
                     jobSearch: this.searchTerm,
-                    duration: DurationState.current
+                    duration: DurationState.current,
+                    expandNew: ExpandNewPipelinesState.enabled
                 });
             }
         };
@@ -1459,7 +1474,51 @@
                 URLStateManager.debouncedSave({
                     filters: FilterState.active,
                     jobSearch: JobSearchState.searchTerm,
-                    duration: this.current
+                    duration: this.current,
+                    expandNew: ExpandNewPipelinesState.enabled
+                });
+            }
+        };
+
+        // State for auto-expanding new pipelines
+        const ExpandNewPipelinesState = {
+            enabled: false,
+            previousPipelineIds: new Set(),
+
+            toggle() {
+                this.enabled = !this.enabled;
+                this._syncToURL();
+            },
+
+            set(value) {
+                if (typeof value !== 'boolean') {
+                    throw new TypeError(`ExpandNewPipelinesState.set() expects boolean, got ${typeof value}`);
+                }
+                this.enabled = value;
+                this._syncToURL();
+            },
+
+            loadFromURL(expandNew) {
+                if (expandNew !== 'true' && expandNew !== 'false') {
+                    throw new TypeError(`ExpandNewPipelinesState.loadFromURL() expects 'true' or 'false', got ${expandNew}`);
+                }
+                this.enabled = expandNew === 'true';
+            },
+
+            updatePipelineIds(pipelineIds) {
+                this.previousPipelineIds = new Set(pipelineIds);
+            },
+
+            getNewPipelineIds(currentPipelineIds) {
+                return currentPipelineIds.filter(id => !this.previousPipelineIds.has(id));
+            },
+
+            _syncToURL() {
+                URLStateManager.debouncedSave({
+                    filters: FilterState.active,
+                    jobSearch: JobSearchState.searchTerm,
+                    duration: DurationState.current,
+                    expandNew: this.enabled
                 });
             }
         };
@@ -1939,6 +1998,40 @@
         }
 
         /**
+         * Initialize expand new pipelines checkbox
+         */
+        function initializeExpandNewPipelinesControl() {
+            const checkbox = document.getElementById('expand-new-pipelines-checkbox');
+            if (!checkbox) {
+                throw new Error('Critical initialization error: expand-new-pipelines-checkbox element not found in DOM');
+            }
+
+            // Load state from URL
+            const urlState = URLStateManager.loadFromURL();
+            ExpandNewPipelinesState.loadFromURL(urlState.expandNew);
+
+            // Update UI to match loaded state
+            checkbox.checked = ExpandNewPipelinesState.enabled;
+
+            if (ExpandNewPipelinesState.enabled) {
+                console.log('Loaded expand new pipelines from URL: enabled');
+            }
+
+            // Add event listener
+            checkbox.addEventListener('change', function() {
+                ExpandNewPipelinesState.set(this.checked);
+                console.log('Expand new pipelines:', this.checked ? 'enabled' : 'disabled');
+                announceToScreenReader(
+                    this.checked
+                        ? 'Auto-expand new pipelines enabled'
+                        : 'Auto-expand new pipelines disabled'
+                );
+            });
+
+            console.log('Expand new pipelines control initialized');
+        }
+
+        /**
          * Apply active filters to timeline data
          */
         function applyFilters() {
@@ -2347,6 +2440,9 @@
             // Initialize filter controls and get URL state
             initializeFilterControls();
 
+            // Initialize expand new pipelines control
+            initializeExpandNewPipelinesControl();
+
             // Initialize legend panel
             initializeLegend();
 
@@ -2443,6 +2539,15 @@
 
                 const { filteredPipelines, filteredJobs } = computeFilteredData();
 
+                // Track pipeline IDs for detecting new pipelines on next refresh
+                const currentPipelineIds = pipelines.map(p => p.id);
+                const newPipelineIds = isRefresh && ExpandNewPipelinesState.enabled
+                    ? ExpandNewPipelinesState.getNewPipelineIds(currentPipelineIds)
+                    : [];
+
+                // Update tracked pipeline IDs for next comparison
+                ExpandNewPipelinesState.updatePipelineIds(currentPipelineIds);
+
                 // Stage 4: Transform data (85-95%)
                 showLoading('Transforming data for visualization...');
                 updateDataFetchInfo('Transforming data...', '', 90, false);
@@ -2458,6 +2563,14 @@
 
                 // Update legend with actual colors from rendered chart
                 updateLegendColors();
+
+                // Auto-expand new pipelines AFTER render (so chart data is ready)
+                if (newPipelineIds.length > 0) {
+                    console.log(`Auto-expanding ${newPipelineIds.length} new pipelines:`, newPipelineIds);
+                    newPipelineIds.forEach(pipelineId => {
+                        ganttChart.expandPipeline(pipelineId);
+                    });
+                }
 
                 updateStatsSummary(pipelines, jobs);
 
