@@ -837,6 +837,24 @@
             margin-top: 4px;
             line-height: 1.3;
         }
+        .legend-note {
+            font-size: 0.82em;
+            color: #6c757d;
+            font-style: italic;
+            margin-top: 4px;
+            line-height: 1.3;
+        }
+        .legend-empty-state {
+            color: #6c757d;
+            font-style: italic;
+            padding: 0.5rem 0;
+            font-size: 0.85em;
+        }
+        #runner-colors-list,
+        #project-colors-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
 
         .gantt-tooltip {
             position: absolute;
@@ -1139,22 +1157,22 @@
                 <div class="legend-project-note">Jobs show outcome via outline color; allowed failures don't fail pipeline</div>
             </div>
 
-            <!-- Project Colors -->
-            <div class="legend-section">
+            <!-- Runner Colors (Primary) -->
+            <div class="legend-section" id="runner-colors-section">
+                <div class="legend-section-title">Runner Colors</div>
+                <div id="runner-colors-list">
+                    <div class="legend-empty-state">Waiting for data...</div>
+                </div>
+                <div class="legend-note">Job bars are colored by runner (when available)</div>
+            </div>
+
+            <!-- Project Colors (Secondary) -->
+            <div class="legend-section" id="project-colors-section">
                 <div class="legend-section-title">Project Colors</div>
-                <div class="legend-item">
-                    <div class="legend-color-box" style="background: hsl(200, 55%, 50%); border: 2px solid hsl(200, 55%, 40%);"></div>
-                    <span class="legend-text">Sample Project A</span>
+                <div id="project-colors-list">
+                    <div class="legend-empty-state">Waiting for data...</div>
                 </div>
-                <div class="legend-item">
-                    <div class="legend-color-box" style="background: hsl(280, 55%, 50%); border: 2px solid hsl(280, 55%, 40%);"></div>
-                    <span class="legend-text">Sample Project B</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color-box" style="background: hsl(30, 55%, 50%); border: 2px solid hsl(30, 55%, 40%);"></div>
-                    <span class="legend-text">Sample Project C</span>
-                </div>
-                <div class="legend-project-note">Each project gets a unique color based on its name</div>
+                <div class="legend-note">Used for pipeline backgrounds and jobs without runner info</div>
             </div>
         </div>
     </aside>
@@ -2118,6 +2136,61 @@
         }
 
         /**
+         * Update legend with actual runner and project colors from chart
+         * Call this after chart renders
+         */
+        function updateLegendColors() {
+            if (!ganttChart) {
+                console.warn('Cannot update legend: chart not initialized');
+                return;
+            }
+
+            // Update runner colors
+            const runners = ganttChart.getDisplayedRunners();
+            const runnerList = document.getElementById('runner-colors-list');
+
+            if (runners.length === 0) {
+                runnerList.innerHTML = '<div class="legend-empty-state">No runner information available</div>';
+            } else {
+                runnerList.innerHTML = runners.map(({name, colors}) => `
+                    <div class="legend-item">
+                        <div class="legend-color-box" style="background: ${colors.fill}; border: 2px solid ${colors.stroke};"></div>
+                        <span class="legend-text">${escapeHtml(name)}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Update project colors
+            const projects = ganttChart.getDisplayedProjects();
+            const projectList = document.getElementById('project-colors-list');
+
+            if (projects.length === 0) {
+                projectList.innerHTML = '<div class="legend-empty-state">No project information available</div>';
+            } else {
+                projectList.innerHTML = projects.map(({name, colors}) => `
+                    <div class="legend-item">
+                        <div class="legend-color-box" style="background: ${colors.fill}; border: 2px solid ${colors.stroke};"></div>
+                        <span class="legend-text">${escapeHtml(name)}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        /**
+         * Escape HTML to prevent XSS (runner/project names from API)
+         * @param {string} unsafe - Unsafe string to escape
+         * @returns {string} - HTML-safe string
+         */
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        /**
          * Initialize keyboard shortcuts help panel
          */
         function initializeKeyboardHelp() {
@@ -2382,6 +2455,9 @@
                 showLoading('Rendering GANTT chart...');
                 updateDataFetchInfo('Rendering visualization...', '', 98, false);
                 ganttChart.render(domainModel, contentionPeriods);
+
+                // Update legend with actual colors from rendered chart
+                updateLegendColors();
 
                 updateStatsSummary(pipelines, jobs);
 

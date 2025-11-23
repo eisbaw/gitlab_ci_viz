@@ -471,6 +471,26 @@ class D3GanttChart {
     }
 
     /**
+     * Get list of runners currently displayed in the chart
+     * @returns {Array<{name: string, colors: {fill: string, stroke: string}}>}
+     */
+    getDisplayedRunners() {
+        return Array.from(this.runnerColorCache.entries())
+            .map(([name, colors]) => ({ name, colors }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    /**
+     * Get list of projects currently displayed in the chart
+     * @returns {Array<{name: string, colors: {fill: string, stroke: string}}>}
+     */
+    getDisplayedProjects() {
+        return Array.from(this.projectColorCache.entries())
+            .map(([name, colors]) => ({ name, colors }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    /**
      * Get runner name from job data
      * @param {Object} d - Row data object
      * @returns {string|null} Runner name/description or null
