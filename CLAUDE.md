@@ -1,3 +1,65 @@
+# Development Workflow
+
+## Nix Shell Environment
+
+This project uses Nix for reproducible development environments.
+
+**Using Nix:**
+- All development commands must run within the nix-shell environment
+- Execute commands via: `nix-shell --run "command"`
+- The shell.nix provides: Python 3.12.8, pytest, pytest-cov, ruff, selenium, chromium, glab, just
+
+**ShellHook Guidelines:**
+- Keep shellHook minimal and non-verbose
+- Only show essential information (versions, critical paths)
+- NEVER add verbose/spammy echo statements
+- Current shellHook shows: Python version, glab version, sets CHROMIUM_PATH and CHROME_PROFILE_DIR
+
+## Justfile Task Runner
+
+Common tasks are automated via justfile recipes. All recipes run within nix-shell.
+
+**Available Commands:**
+- `just lint` - Run ruff linting (check + format validation)
+- `just test` - Run pytest with coverage reporting
+- `just run` - Start the development server
+- `just clean` - Remove temporary files and caches
+- `just benchmark` - Run performance benchmarks (selenium-based)
+- `just chrome` - Launch Chromium with project-local profile
+- `just chrome-devtools` - Launch Chromium with DevTools open
+
+**Justfile Guidelines:**
+- Place all common commands (build, lint, test, run) as recipes
+- Keep recipes focused and well-documented
+- Use `#!/usr/bin/env bash` for multi-line recipes
+- Set `set -euo pipefail` for safety in bash recipes
+
+## Quality Assurance
+
+**Requirements:**
+- All tests must pass (100% pass rate)
+- Zero linting violations
+- Maintain 86%+ code coverage
+
+**Running QA Checks:**
+```bash
+nix-shell --run "ruff check ."              # Lint check
+nix-shell --run "ruff format --check ."     # Format check
+nix-shell --run "pytest -v --cov=."         # Tests with coverage
+```
+
+**Or use justfile shortcuts:**
+```bash
+nix-shell --run "just lint"   # All linting checks
+nix-shell --run "just test"   # All tests with coverage
+```
+
+**Current Status:**
+- 76 Python unit tests (100% passing)
+- 86% overall coverage (serve.py: 77%, test_serve.py: 99%)
+- Zero ruff violations
+
+---
 
 <!-- BACKLOG.MD GUIDELINES START -->
 # Instructions for the usage of Backlog.md CLI Tool
