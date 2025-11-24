@@ -102,6 +102,7 @@ class D3GanttChart {
         this.chartGroup.append('g').attr('class', 'pipeline-backgrounds-layer');
         this.chartGroup.append('g').attr('class', 'pipeline-click-overlay-layer'); // Clickable overlay behind jobs
         this.chartGroup.append('g').attr('class', 'bars-layer');
+        this.chartGroup.append('g').attr('class', 'running-stripes-layer'); // Animated stripes for running jobs
         this.chartGroup.append('g').attr('class', 'avatars-layer');
         this.chartGroup.append('g').attr('class', 'current-time-layer');
         this.chartGroup.append('g').attr('class', 'axis-layer');
@@ -116,6 +117,66 @@ class D3GanttChart {
             .attr('cx', this.avatarSize / 2)
             .attr('cy', this.avatarSize / 2)
             .attr('r', this.avatarSize / 2);
+
+        // Define diagonal stripe pattern for running jobs (warning tape effect)
+        // Pattern width is 28px, containing two 14px stripes (one visible, one transparent)
+        const pattern = defs.append('pattern')
+            .attr('id', 'diagonal-stripes')
+            .attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', 28)
+            .attr('height', 28)
+            .attr('patternTransform', 'rotate(45)');
+
+        // Create two identical stripe cycles for seamless wrapping
+        // First cycle (0-28px)
+        pattern.append('rect')
+            .attr('x', 0)
+            .attr('width', 14)
+            .attr('height', 28)
+            .attr('fill', 'rgba(255, 255, 255, 0.3)');
+
+        pattern.append('rect')
+            .attr('x', 14)
+            .attr('width', 14)
+            .attr('height', 28)
+            .attr('fill', 'transparent');
+
+        // Start animation
+        this.animateStripePattern();
+    }
+
+    /**
+     * Animate the diagonal stripe pattern for running jobs
+     * Uses requestAnimationFrame for smooth, seamless scrolling without wrap stutter
+     */
+    animateStripePattern() {
+        const pattern = this.svg.select('#diagonal-stripes');
+        if (pattern.empty()) return;
+
+        let offset = 0;
+        let lastTime = performance.now();
+
+        const animate = (currentTime) => {
+            // Calculate time delta for frame-rate independent animation
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+
+            // Move at constant speed: 28px per second (one full cycle)
+            const speed = 28; // pixels per second
+            offset += (speed * deltaTime) / 1000;
+
+            // Seamless wrap: pattern repeats every 28px, so wrapping is invisible
+            if (offset >= 28) {
+                offset = offset % 28;
+            }
+
+            // Update pattern transform
+            pattern.attr('patternTransform', `rotate(45) translate(${offset}, 0)`);
+
+            requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
     }
 
     /**
@@ -226,6 +287,7 @@ class D3GanttChart {
         this.renderContention(width);
         this.renderPipelineBackgrounds(rows);
         this.renderBars(rows);
+        this.renderRunningStripes(rows);
         this.renderAvatars(rows);
         this.renderCurrentTime(height);
         this.renderAxis(width);
@@ -574,6 +636,7 @@ class D3GanttChart {
             this.renderPipelineBackgrounds(rows);
             // Use zoom mode for minimal DOM updates (only x-positions and widths)
             this.renderBars(rows, 'zoom');
+            this.renderRunningStripes(rows, 'zoom');
             this.renderAvatars(rows);
             this.renderCurrentTime(this.getChartHeight());
             this.renderAxis(this.getChartWidth());
@@ -1198,6 +1261,74 @@ class D3GanttChart {
                 .style('display', d => {
                     const barWidth = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                     return barWidth >= this.minBarWidthForText ? 'block' : 'none';
+                })
+        );
+    }
+
+    /**
+     * Render animated diagonal stripes overlay for running jobs
+     */
+    renderRunningStripes(rows, mode = 'full') {
+        const stripesLayer = this.chartGroup.select('.running-stripes-layer');
+
+        // Filter to only running jobs (exclude expanded pipelines, groups, and non-running)
+        const runningJobs = rows.filter(r => {
+            if (r.type === 'group') return false;
+            if (r.type === 'pipeline' && r.expanded) return false;
+            return r.status === 'running';
+        });
+
+        const stripes = stripesLayer.selectAll('rect.running-stripe')
+            .data(runningJobs, (d, i) => `${d.type}-${i}`);
+
+        // Fast path for zoom: only update x-positions and widths
+        if (mode === 'zoom') {
+            stripes.attr('x', d => this.xScale(new Date(d.start)))
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4);
+                });
+            return;
+        }
+
+        // Full rendering path
+        stripes.join(
+            enter => enter.append('rect')
+                .attr('class', 'running-stripe')
+                .attr('x', d => this.xScale(new Date(d.start)))
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
+                })
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4);
+                })
+                .attr('height', this.barHeight)
+                .attr('rx', d => {
+                    // Match bar shape (circular for pending jobs)
+                    if (this.isPendingJob(d)) {
+                        return this.barHeight / 2;
+                    }
+                    return 2;
+                })
+                .attr('fill', 'url(#diagonal-stripes)')
+                .attr('pointer-events', 'none'), // Don't block clicks on bars
+            update => update
+                .attr('x', d => this.xScale(new Date(d.start)))
+                .attr('y', (d, i) => {
+                    const rowIndex = rows.indexOf(d);
+                    return this.yScale(rowIndex) + (this.rowHeight - this.barHeight) / 2;
+                })
+                .attr('width', d => {
+                    const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
+                    return Math.max(w, 4);
+                })
+                .attr('rx', d => {
+                    if (this.isPendingJob(d)) {
+                        return this.barHeight / 2;
+                    }
+                    return 2;
                 })
         );
     }
