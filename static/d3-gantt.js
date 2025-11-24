@@ -714,7 +714,8 @@ class D3GanttChart {
     }
 
     /**
-     * Render resource contention background
+     * Render resource contention background in axis area
+     * Shows as a thin colored strip behind the timeline axis
      */
     renderContention(width) {
         const contentionLayer = this.chartGroup.select('.contention-layer');
@@ -724,20 +725,21 @@ class D3GanttChart {
             return;
         }
 
-        // Get SVG height for full-height background
-        const svgHeight = parseFloat(this.svg.attr('height')) - this.margin.top - this.margin.bottom;
+        // Render in axis area: from -30px (above day labels) to -2px (below time labels)
+        const axisY = -30;
+        const axisHeight = 28;
 
         contentionLayer.selectAll('rect')
             .data(this.contentionPeriods)
             .join('rect')
             .attr('class', d => `contention-${d.level}`)
             .attr('x', d => this.xScale(new Date(d.start)))
-            .attr('y', 0)
+            .attr('y', axisY)
             .attr('width', d => {
                 const w = this.xScale(new Date(d.end)) - this.xScale(new Date(d.start));
                 return Math.max(w, 2); // Minimum 2px width
             })
-            .attr('height', svgHeight);
+            .attr('height', axisHeight);
     }
 
     /**
