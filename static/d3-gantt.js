@@ -1861,6 +1861,17 @@ class D3GanttChart {
     }
 
     /**
+     * Expand a pipeline (only if not already expanded)
+     */
+    expandPipeline(pipelineId) {
+        if (!this.expandedPipelines.has(pipelineId)) {
+            this.expandedPipelines.add(pipelineId);
+            this.cachedRows = null;
+            this.render(this.data, this.contentionPeriods);
+        }
+    }
+
+    /**
      * Toggle pipeline expand/collapse
      */
     togglePipeline(pipelineId) {
