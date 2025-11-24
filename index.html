@@ -1260,7 +1260,7 @@
                     return {
                         filters: new Set(filters),
                         jobSearch: params.get('jobSearch') || '',
-                        duration: params.get('duration') || '6h',
+                        duration: params.get('duration') || '1h',
                         expandNew: params.get('expandNew') || 'true'
                     };
                 }
@@ -1269,7 +1269,7 @@
                 return {
                     filters: new Set(['success', 'failed', 'running', 'pending', 'canceled']),
                     jobSearch: '',
-                    duration: params.get('duration') || '6h',
+                    duration: params.get('duration') || '1h',
                     expandNew: params.get('expandNew') || 'true'
                 };
             },
@@ -1415,7 +1415,8 @@
         // Duration state encapsulation
         const DurationState = {
             current: '1h',
-            FETCH_BUFFER_MS: 6 * 60 * 60 * 1000, // Always fetch 6 hours extra
+            MIN_FETCH_MS: 24 * 60 * 60 * 1000, // Always fetch at least 1 day of data
+            FETCH_BUFFER_MS: 6 * 60 * 60 * 1000, // Extra buffer beyond viewport for zooming
 
             set(duration) {
                 this.current = duration;
@@ -1438,9 +1439,10 @@
                 return durationMap[this.current] || durationMap['1w'];
             },
 
-            // Get fetch time range (viewport + 6 hour buffer for zooming out)
+            // Get fetch time range (viewport + buffer, minimum 1 day)
             getFetchDuration() {
-                return this.getViewportDuration() + this.FETCH_BUFFER_MS;
+                const fetchDuration = this.getViewportDuration() + this.FETCH_BUFFER_MS;
+                return Math.max(fetchDuration, this.MIN_FETCH_MS);
             },
 
             // Get viewport start time (for initial chart display)
@@ -1628,6 +1630,11 @@
                     // Update CONFIG with new time range
                     CONFIG.updatedAfter = DurationState.getUpdatedAfter();
                     CONFIG.viewportStart = DurationState.getViewportStart();
+
+                    // Reset viewport flag so chart will zoom to new time range
+                    if (ganttChart) {
+                        ganttChart.hasInitialViewportSet = false;
+                    }
 
                     // Re-fetch data with new duration
                     await fetchAndRender(false);
