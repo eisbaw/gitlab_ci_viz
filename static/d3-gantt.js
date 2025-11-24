@@ -280,6 +280,10 @@ class D3GanttChart {
         // Initialize zoom behavior (only once)
         if (!this.zoom) {
             this.initializeZoom(width, height);
+            // Sync zoom behavior with viewport transform (if set)
+            if (this.currentTransform && this.currentTransform.k !== 1) {
+                this.svg.call(this.zoom.transform, this.currentTransform);
+            }
         }
 
         // Render layers
