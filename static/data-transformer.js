@@ -104,8 +104,9 @@ class Pipeline {
      * @param {Object|null} triggeringUser - The actual GitLab user who triggered this pipeline (from API)
      * @param {string|null} ref - Git ref (branch/tag name)
      * @param {string|null} sha - Git commit SHA
+     * @param {string|null} source - Pipeline source (e.g., 'push', 'web', 'parent_pipeline', 'trigger')
      */
-    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, group, projectPathWithNamespace = null, triggeringUser = null, ref = null, sha = null) {
+    constructor(id, projectId, status, createdAt, startedAt, finishedAt, duration, webUrl, group, projectPathWithNamespace = null, triggeringUser = null, ref = null, sha = null, source = null) {
         // Validate required fields
         if (!id || !projectId || !status || !createdAt) {
             throw new Error(`Invalid pipeline data: missing required fields (id=${id}, projectId=${projectId}, status=${status}, createdAt=${createdAt})`);
@@ -135,7 +136,45 @@ class Pipeline {
         this.triggeringUser = triggeringUser; // Actual GitLab user who triggered this pipeline
         this.ref = ref; // Git ref (branch/tag name)
         this.sha = sha; // Git commit SHA
+        this.source = source; // Pipeline source (push, web, parent_pipeline, trigger, etc.)
         this.jobs = [];
+        this.bridgeJobs = []; // Bridge jobs that trigger downstream pipelines
+        this.childPipelines = []; // Downstream pipelines triggered by this pipeline
+        this.parentPipelineId = null; // ID of parent pipeline (if this is a child pipeline)
+        this.parentBridgeJobId = null; // ID of bridge job that triggered this pipeline
+    }
+
+    /**
+     * Check if this pipeline is a child pipeline (triggered by a parent)
+     * @returns {boolean} True if this is a child/downstream pipeline
+     */
+    isChildPipeline() {
+        return this.source === 'parent_pipeline' || this.parentPipelineId !== null;
+    }
+
+    /**
+     * Check if this pipeline has downstream/child pipelines
+     * @returns {boolean} True if this pipeline has triggered downstream pipelines
+     */
+    hasChildPipelines() {
+        return this.childPipelines.length > 0 || this.bridgeJobs.some(b => b.downstreamPipeline);
+    }
+
+    /**
+     * Add a bridge job to this pipeline
+     * @param {BridgeJob} bridgeJob - Bridge job to add
+     */
+    addBridgeJob(bridgeJob) {
+        this.bridgeJobs.push(bridgeJob);
+    }
+
+    /**
+     * Add a child pipeline to this pipeline
+     * @param {Pipeline} childPipeline - Child pipeline to add
+     */
+    addChildPipeline(childPipeline) {
+        this.childPipelines.push(childPipeline);
+        childPipeline.parentPipelineId = this.id;
     }
 
     /**
@@ -374,6 +413,82 @@ class Job {
 }
 
 /**
+ * Domain Model: BridgeJob
+ * Represents a bridge/trigger job that triggers downstream pipelines.
+ * Bridge jobs are special GitLab CI jobs that trigger child or multi-project pipelines.
+ */
+class BridgeJob {
+    /**
+     * Create a BridgeJob instance
+     * @param {number} id - Job ID
+     * @param {string} name - Job name
+     * @param {string} stage - Stage name
+     * @param {string} status - Job status
+     * @param {string} createdAt - ISO 8601 creation timestamp
+     * @param {string|null} startedAt - ISO 8601 start timestamp
+     * @param {string|null} finishedAt - ISO 8601 finish timestamp
+     * @param {number|null} duration - Duration in seconds
+     * @param {string} webUrl - URL to job page
+     * @param {number} pipelineId - Parent pipeline ID
+     * @param {number} projectId - Project ID
+     * @param {Object|null} downstreamPipeline - Downstream pipeline info from API
+     */
+    constructor(id, name, stage, status, createdAt, startedAt, finishedAt, duration, webUrl, pipelineId, projectId, downstreamPipeline = null) {
+        // Validate required fields
+        if (!id || !name || !status || !createdAt || !pipelineId) {
+            throw new Error(`Invalid bridge job data: missing required fields (id=${id}, name=${name}, status=${status}, createdAt=${createdAt}, pipelineId=${pipelineId})`);
+        }
+
+        this.id = id;
+        this.name = name;
+        this.stage = stage;
+        this.status = status;
+        this.createdAt = createdAt;
+        this.startedAt = startedAt;
+        this.finishedAt = finishedAt;
+        this.duration = duration;
+        this.webUrl = webUrl;
+        this.pipelineId = pipelineId;
+        this.projectId = projectId;
+        this.downstreamPipeline = downstreamPipeline; // {id, sha, ref, status, web_url, project_id}
+    }
+
+    /**
+     * Check if this bridge job has triggered a downstream pipeline
+     * @returns {boolean} True if downstream pipeline exists
+     */
+    hasDownstreamPipeline() {
+        return this.downstreamPipeline !== null && this.downstreamPipeline.id !== undefined;
+    }
+
+    /**
+     * Get the downstream pipeline ID if it exists
+     * @returns {number|null} Downstream pipeline ID or null
+     */
+    getDownstreamPipelineId() {
+        return this.downstreamPipeline?.id || null;
+    }
+
+    /**
+     * Get the downstream project ID (for multi-project pipelines)
+     * If not specified, it's a same-project child pipeline
+     * @returns {number|null} Downstream project ID or null (same project)
+     */
+    getDownstreamProjectId() {
+        return this.downstreamPipeline?.project_id || null;
+    }
+
+    /**
+     * Check if this is a multi-project pipeline trigger (different project)
+     * @returns {boolean} True if downstream pipeline is in a different project
+     */
+    isMultiProjectTrigger() {
+        const downstreamProjectId = this.getDownstreamProjectId();
+        return downstreamProjectId !== null && downstreamProjectId !== this.projectId;
+    }
+}
+
+/**
  * Data Transformer
  * Transforms GitLab API data to domain model and vis.js format
  */
@@ -442,7 +557,8 @@ class DataTransformer {
                 projectPathWithNamespace,
                 apiPipeline.user || null,  // Store actual triggering user from API
                 apiPipeline.ref || null,   // Git ref (branch/tag)
-                apiPipeline.sha || null    // Git commit SHA
+                apiPipeline.sha || null,   // Git commit SHA
+                apiPipeline.source || null // Pipeline source (push, web, parent_pipeline, etc.)
             );
 
             // Add to group and map
@@ -768,14 +884,129 @@ class DataTransformer {
 
         return result;
     }
+
+    /**
+     * Process bridge jobs and link them to pipelines
+     *
+     * This method takes bridge job data from the GitLab API and:
+     * 1. Creates BridgeJob domain objects
+     * 2. Links bridge jobs to their parent pipelines
+     * 3. Establishes parent-child relationships between pipelines
+     *
+     * @param {Array} bridges - Array of bridge job objects from GitLab API
+     * @param {Map} pipelineMap - Map of pipeline ID to Pipeline domain object
+     * @returns {Array<BridgeJob>} - Array of BridgeJob domain objects
+     */
+    static transformBridges(bridges, pipelineMap) {
+        const bridgeJobs = [];
+
+        for (const apiBridge of bridges) {
+            const pipelineId = apiBridge.pipeline_id;
+            const pipeline = pipelineMap.get(pipelineId);
+
+            if (!pipeline) {
+                console.warn(`Bridge job ${apiBridge.id} references unknown pipeline ${pipelineId}`);
+                continue;
+            }
+
+            // Create BridgeJob domain object
+            const bridgeJob = new BridgeJob(
+                apiBridge.id,
+                apiBridge.name,
+                apiBridge.stage || 'trigger',
+                apiBridge.status,
+                apiBridge.created_at,
+                apiBridge.started_at,
+                apiBridge.finished_at,
+                apiBridge.duration,
+                apiBridge.web_url,
+                pipelineId,
+                apiBridge.project_id,
+                apiBridge.downstream_pipeline || null
+            );
+
+            // Add to parent pipeline
+            pipeline.addBridgeJob(bridgeJob);
+            bridgeJobs.push(bridgeJob);
+
+            // If downstream pipeline exists in our pipelineMap, establish parent-child relationship
+            if (bridgeJob.hasDownstreamPipeline()) {
+                const childPipelineId = bridgeJob.getDownstreamPipelineId();
+                const childPipeline = pipelineMap.get(childPipelineId);
+
+                if (childPipeline) {
+                    pipeline.addChildPipeline(childPipeline);
+                    childPipeline.parentBridgeJobId = bridgeJob.id;
+                }
+            }
+        }
+
+        return bridgeJobs;
+    }
+
+    /**
+     * Find all child pipelines for a given pipeline
+     * Useful for traversing the pipeline hierarchy
+     *
+     * @param {Pipeline} pipeline - Parent pipeline
+     * @param {Map} pipelineMap - Map of pipeline ID to Pipeline domain object
+     * @returns {Array<Pipeline>} - Array of child Pipeline domain objects
+     */
+    static getChildPipelines(pipeline, pipelineMap) {
+        const children = [];
+
+        for (const bridgeJob of pipeline.bridgeJobs) {
+            if (bridgeJob.hasDownstreamPipeline()) {
+                const childId = bridgeJob.getDownstreamPipelineId();
+                const childPipeline = pipelineMap.get(childId);
+                if (childPipeline) {
+                    children.push(childPipeline);
+                }
+            }
+        }
+
+        return children;
+    }
+
+    /**
+     * Build a complete pipeline hierarchy including child pipelines
+     * Returns a tree structure of pipelines
+     *
+     * @param {Pipeline} rootPipeline - Root/parent pipeline
+     * @param {Map} pipelineMap - Map of pipeline ID to Pipeline domain object
+     * @param {number} maxDepth - Maximum recursion depth (default: 5)
+     * @returns {Object} - Pipeline hierarchy object
+     */
+    static buildPipelineHierarchy(rootPipeline, pipelineMap, maxDepth = 5) {
+        const buildTree = (pipeline, depth) => {
+            if (depth > maxDepth) {
+                return {
+                    pipeline: pipeline,
+                    children: [],
+                    truncated: true
+                };
+            }
+
+            const children = this.getChildPipelines(pipeline, pipelineMap);
+            return {
+                pipeline: pipeline,
+                children: children.map(child => buildTree(child, depth + 1)),
+                truncated: false
+            };
+        };
+
+        return buildTree(rootPipeline, 0);
+    }
 }
 
 // Export to global scope for both browser and Node.js
 if (typeof window !== 'undefined') {
     window.DataTransformer = DataTransformer;
+    window.BridgeJob = BridgeJob;
 } else if (typeof global !== 'undefined') {
     global.DataTransformer = DataTransformer;
     global.Pipeline = Pipeline;
     global.Job = Job;
     global.GroupKey = GroupKey;
+    global.BridgeJob = BridgeJob;
 }

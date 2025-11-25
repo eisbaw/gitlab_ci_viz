@@ -402,6 +402,42 @@ class GitLabAPIClient {
     }
 
     /**
+     * Get bridge jobs (trigger jobs) for a pipeline
+     *
+     * Bridge jobs are special jobs that trigger downstream/child pipelines.
+     * This endpoint returns jobs that have triggered other pipelines, along with
+     * information about those downstream pipelines.
+     *
+     * @param {string} projectId - GitLab project ID
+     * @param {string} pipelineId - Pipeline ID
+     * @returns {Promise<Array>} - Array of bridge job objects with structure:
+     *   [{
+     *     id: number,
+     *     name: string,
+     *     stage: string,
+     *     status: 'created'|'pending'|'running'|'success'|'failed'|'canceled'|'skipped',
+     *     created_at: string (ISO 8601),
+     *     started_at: string|null (ISO 8601),
+     *     finished_at: string|null (ISO 8601),
+     *     duration: number|null (seconds),
+     *     web_url: string,
+     *     downstream_pipeline: {
+     *       id: number,
+     *       sha: string,
+     *       ref: string,
+     *       status: string,
+     *       created_at: string,
+     *       updated_at: string,
+     *       web_url: string,
+     *       project_id: number (for multi-project pipelines)
+     *     }|null
+     *   }]
+     */
+    async getPipelineBridges(projectId, pipelineId) {
+        return this.request(`/projects/${projectId}/pipelines/${pipelineId}/bridges`);
+    }
+
+    /**
      * Fetch projects based on configuration (either from group or specific project IDs)
      *
      * This is the main entry point for project fetching that handles both modes:
@@ -977,6 +1013,103 @@ class GitLabAPIClient {
         // Flatten and return all successful job results
         // Note: Empty array is valid when pipelines have no jobs yet (e.g., pending state)
         return succeeded.flatMap(s => s.jobs);
+    }
+
+    /**
+     * Fetch bridge jobs (trigger jobs) for given pipelines
+     *
+     * Fetches all bridge jobs for the provided pipelines using the GitLab API.
+     * Bridge jobs are special jobs that trigger downstream/child pipelines.
+     * Handles partial failures gracefully - if some pipelines fail to return bridges,
+     * the function continues and returns bridges from successful fetches.
+     *
+     * @param {Array} pipelines - Array of pipeline objects with project_id and id properties
+     * @returns {Promise<Array>} - Array of bridge job objects with metadata:
+     *   [{
+     *     id: number,
+     *     name: string,
+     *     stage: string,
+     *     status: string,
+     *     created_at: string,
+     *     started_at: string|null,
+     *     finished_at: string|null,
+     *     duration: number|null,
+     *     web_url: string,
+     *     project_id: number,
+     *     pipeline_id: number,
+     *     downstream_pipeline: {id, sha, ref, status, web_url, project_id}|null
+     *   }]
+     * @throws {Error} - If pipelines array is empty or invalid
+     */
+    async fetchBridges(pipelines) {
+        if (!Array.isArray(pipelines) || pipelines.length === 0) {
+            throw this._createError(
+                'ConfigurationError',
+                'Pipelines array is empty or invalid'
+            );
+        }
+
+        // Validate pipelines have required properties
+        for (const pipeline of pipelines) {
+            if (!pipeline.project_id || !pipeline.id) {
+                throw this._createError(
+                    'ConfigurationError',
+                    'Pipeline object missing required "project_id" or "id" property'
+                );
+            }
+        }
+
+        // Fetch bridges for all pipelines in parallel
+        // Each pipeline promise catches its own errors to allow partial success
+        const bridgePromises = pipelines.map(pipeline =>
+            this.getPipelineBridges(pipeline.project_id, pipeline.id)
+                .then(bridges => ({
+                    pipelineId: pipeline.id,
+                    projectId: pipeline.project_id,
+                    success: true,
+                    bridges: bridges.map(b => ({
+                        ...b,
+                        project_id: pipeline.project_id,
+                        pipeline_id: pipeline.id
+                    }))
+                }))
+                .catch(error => {
+                    // 404 is expected for pipelines without bridges endpoint (older GitLab versions)
+                    // or pipelines that simply have no downstream pipelines
+                    if (error.errorType === 'NotFoundError') {
+                        return {
+                            pipelineId: pipeline.id,
+                            projectId: pipeline.project_id,
+                            success: true,
+                            bridges: []
+                        };
+                    }
+                    return {
+                        pipelineId: pipeline.id,
+                        projectId: pipeline.project_id,
+                        success: false,
+                        error: { name: error.name, message: error.message, errorType: error.errorType }
+                    };
+                })
+        );
+
+        const results = await Promise.all(bridgePromises);
+
+        // Separate successful and failed fetches
+        const succeeded = results.filter(r => r.success);
+        const failed = results.filter(r => !r.success);
+
+        // Log warnings for failed pipelines (but don't fail the whole operation)
+        if (failed.length > 0) {
+            console.warn(`Failed to fetch bridges for ${failed.length} of ${pipelines.length} pipelines:`,
+                failed.map(f => `pipeline ${f.pipelineId} (project ${f.projectId}): ${f.error.message}`));
+        }
+
+        // Unlike fetchJobs, we don't throw if all fail - bridges are optional
+        // Many pipelines don't have downstream pipelines at all
+
+        // Flatten and return all successful bridge results
+        return succeeded.flatMap(s => s.bridges);
     }
 
 }

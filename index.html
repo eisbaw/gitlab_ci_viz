@@ -2516,7 +2516,7 @@
                     return;
                 }
 
-                // Stage 3: Fetch jobs (60-85%)
+                // Stage 3: Fetch jobs (60-80%)
                 showLoading(`Fetching jobs from ${pipelines.length} pipelines...`);
                 updateDataFetchInfo(
                     'Fetching jobs...',
@@ -2525,6 +2525,16 @@
                     false
                 );
                 const jobs = await apiClient.fetchJobs(pipelines);
+
+                // Stage 3.5: Fetch bridge jobs for downstream pipeline detection (80-85%)
+                showLoading('Fetching downstream pipeline info...');
+                updateDataFetchInfo(
+                    'Fetching bridges...',
+                    'Detecting child pipelines',
+                    82,
+                    false
+                );
+                const bridges = await apiClient.fetchBridges(pipelines);
 
                 unfilteredPipelines = pipelines;
                 unfilteredJobs = jobs;
@@ -2544,6 +2554,20 @@
                 showLoading('Transforming data for visualization...');
                 updateDataFetchInfo('Transforming data...', '', 90, false);
                 const domainModel = DataTransformer.transformToDomainModel(filteredPipelines, filteredJobs, projectMap);
+
+                // Build pipelineMap from domain model (Pipeline instances, not raw API objects)
+                const pipelineMap = new Map();
+                for (const group of domainModel) {
+                    for (const pipeline of group.pipelines) {
+                        pipelineMap.set(pipeline.id, pipeline);
+                    }
+                }
+
+                // Process bridges to establish parent-child relationships on domain objects
+                if (bridges.length > 0) {
+                    console.log(`Processing ${bridges.length} bridge jobs for downstream pipeline detection`);
+                    DataTransformer.transformBridges(bridges, pipelineMap);
+                }
 
                 const allPipelines = domainModel.flatMap(group => group.pipelines);
                 const contentionPeriods = ContentionAnalyzer.calculateContentionPeriods(allPipelines);
@@ -2568,9 +2592,10 @@
 
                 // Success - show final status
                 const actionWord = isRefresh ? 'refreshed' : 'loaded';
+                const bridgeInfo = bridges.length > 0 ? `, ${bridges.length} downstream triggers` : '';
                 const successMessage =
                     `<strong>Data ${actionWord} successfully</strong><br>` +
-                    `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs<br>` +
+                    `Loaded ${projects.length} projects, ${pipelines.length} pipelines, ${jobs.length} jobs${bridgeInfo}<br>` +
                     `Time range: ${CONFIG.since}`;
                 updateStatus(successMessage, 'success');
 

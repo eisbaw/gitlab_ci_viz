@@ -34,8 +34,10 @@ class MockDataStore:
         self.projects = self._generate_projects()
         self.pipelines = self._generate_pipelines()
         self.jobs = self._generate_jobs()
+        self.bridges = self._generate_bridges()
         logging.info(
-            f"Generated {len(self.projects)} projects, {len(self.pipelines)} pipelines, {len(self.jobs)} jobs"
+            f"Generated {len(self.projects)} projects, {len(self.pipelines)} pipelines, "
+            f"{len(self.jobs)} jobs, {len(self.bridges)} bridge jobs"
         )
 
     def _generate_groups(self):
@@ -223,6 +225,180 @@ class MockDataStore:
 
         return jobs
 
+    def _generate_bridges(self):
+        """Generate bridge jobs that trigger downstream/child pipelines.
+
+        Creates realistic parent-child pipeline relationships:
+        - Some pipelines have bridge jobs that trigger child pipelines
+        - Child pipelines are in the same project (parent_pipeline source)
+        - Bridge jobs include downstream_pipeline info
+        """
+        bridges = []
+
+        # Create bridge jobs for selected pipelines (every 3rd pipeline in project 101)
+        # These will trigger child pipelines in the same project
+        for pipeline in self.pipelines:
+            project_id = pipeline["project_id"]
+            pipeline_id = pipeline["id"]
+
+            # Only add bridges to some finished pipelines in project 101
+            # Pipeline IDs: 101000-101009 for project 101
+            if project_id != 101:
+                continue
+            if pipeline["status"] not in ["success", "failed"]:
+                continue
+            # Every 3rd pipeline gets a bridge job
+            if (pipeline_id % 3) != 0:
+                continue
+
+            bridge_id = pipeline_id * 100 + 99  # Unique ID for bridge job
+
+            # Calculate timing based on pipeline
+            if pipeline["started_at"]:
+                created_at = datetime.fromisoformat(pipeline["started_at"])
+                started_at = created_at + timedelta(minutes=8)  # After other jobs
+
+                if pipeline["status"] == "success":
+                    finished_at = started_at + timedelta(seconds=30)
+                    status = "success"
+                    duration = 30
+                else:
+                    finished_at = started_at + timedelta(seconds=15)
+                    status = "failed"
+                    duration = 15
+            else:
+                created_at = datetime.fromisoformat(pipeline["created_at"])
+                started_at = None
+                finished_at = None
+                status = "pending"
+                duration = None
+
+            # Create a child pipeline that this bridge triggers
+            # Child pipeline ID is derived from parent
+            child_pipeline_id = pipeline_id + 50000
+
+            # Add the child pipeline to our pipelines list
+            child_created_at = started_at or created_at
+            child_started_at = (
+                child_created_at + timedelta(seconds=5) if started_at else None
+            )
+            child_finished_at = (
+                child_started_at + timedelta(minutes=3)
+                if finished_at and child_started_at
+                else None
+            )
+            child_status = pipeline["status"] if finished_at else "running"
+
+            child_pipeline = {
+                "id": child_pipeline_id,
+                "project_id": project_id,
+                "status": child_status,
+                "source": "parent_pipeline",  # Indicates this is a child pipeline
+                "ref": pipeline["ref"],
+                "sha": f"child{pipeline_id:06d}".ljust(40, "0"),
+                "created_at": child_created_at.isoformat(),
+                "updated_at": (
+                    child_finished_at or child_started_at or child_created_at
+                ).isoformat(),
+                "started_at": child_started_at.isoformat()
+                if child_started_at
+                else None,
+                "finished_at": (
+                    child_finished_at.isoformat() if child_finished_at else None
+                ),
+                "duration": (
+                    int((child_finished_at - child_started_at).total_seconds())
+                    if child_finished_at and child_started_at
+                    else None
+                ),
+                "web_url": f"http://localhost:8001/dev-team/backend-api/-/pipelines/{child_pipeline_id}",
+                "user": pipeline["user"],
+            }
+            self.pipelines.append(child_pipeline)
+
+            # Create jobs for the child pipeline
+            child_stages = ["child-build", "child-test"]
+            for stage_idx, stage in enumerate(child_stages):
+                child_job_id = child_pipeline_id * 10 + stage_idx
+                if child_started_at:
+                    job_started_at = child_started_at + timedelta(minutes=stage_idx)
+                    job_finished_at = (
+                        job_started_at + timedelta(minutes=1)
+                        if child_finished_at
+                        else None
+                    )
+                    job_status = child_status if job_finished_at else "running"
+                    job_duration = 60 if job_finished_at else None
+                else:
+                    job_started_at = None
+                    job_finished_at = None
+                    job_status = "pending"
+                    job_duration = None
+
+                self.jobs.append(
+                    {
+                        "id": child_job_id,
+                        "name": stage,
+                        "stage": stage,
+                        "status": job_status,
+                        "pipeline": {
+                            "id": child_pipeline_id,
+                            "project_id": project_id,
+                            "ref": pipeline["ref"],
+                        },
+                        "created_at": child_created_at.isoformat(),
+                        "started_at": (
+                            job_started_at.isoformat() if job_started_at else None
+                        ),
+                        "finished_at": (
+                            job_finished_at.isoformat() if job_finished_at else None
+                        ),
+                        "duration": job_duration,
+                        "web_url": f"http://localhost:8001/dev-team/backend-api/-/jobs/{child_job_id}",
+                        "user": pipeline["user"],
+                        "runner": {
+                            "id": (child_job_id % 5) + 1,
+                            "description": f"runner-{(child_job_id % 5) + 1}",
+                            "active": True,
+                        }
+                        if job_status not in ["pending", "skipped"]
+                        else None,
+                    }
+                )
+
+            # Create the bridge job
+            bridges.append(
+                {
+                    "id": bridge_id,
+                    "name": "trigger-child",
+                    "stage": "trigger",
+                    "status": status,
+                    "pipeline": {
+                        "id": pipeline_id,
+                        "project_id": project_id,
+                        "ref": pipeline["ref"],
+                    },
+                    "created_at": created_at.isoformat(),
+                    "started_at": started_at.isoformat() if started_at else None,
+                    "finished_at": finished_at.isoformat() if finished_at else None,
+                    "duration": duration,
+                    "web_url": f"http://localhost:8001/dev-team/backend-api/-/jobs/{bridge_id}",
+                    "user": pipeline["user"],
+                    "downstream_pipeline": {
+                        "id": child_pipeline_id,
+                        "sha": child_pipeline["sha"],
+                        "ref": child_pipeline["ref"],
+                        "status": child_status,
+                        "created_at": child_created_at.isoformat(),
+                        "updated_at": child_pipeline["updated_at"],
+                        "web_url": child_pipeline["web_url"],
+                        "project_id": project_id,  # Same project for child pipelines
+                    },
+                }
+            )
+
+        return bridges
+
 
 class MockGitLabHandler(BaseHTTPRequestHandler):
     """HTTP request handler for mock GitLab API"""
@@ -252,6 +428,12 @@ class MockGitLabHandler(BaseHTTPRequestHandler):
         # Route to appropriate handler
         if path.startswith("/api/v4/groups/") and path.endswith("/projects"):
             self._handle_group_projects(path, page, per_page)
+        elif (
+            path.startswith("/api/v4/projects/")
+            and "/pipelines/" in path
+            and "/bridges" in path
+        ):
+            self._handle_pipeline_bridges(path, page, per_page)
         elif (
             path.startswith("/api/v4/projects/")
             and "/pipelines/" in path
@@ -343,6 +525,25 @@ class MockGitLabHandler(BaseHTTPRequestHandler):
         ]
 
         self._send_paginated_response(jobs, page, per_page)
+
+    def _handle_pipeline_bridges(self, path, page, per_page):
+        """Handle /api/v4/projects/:id/pipelines/:pipeline_id/bridges"""
+        try:
+            parts = path.split("/")
+            _project_id = int(parts[4])  # Validate project ID is an integer
+            pipeline_id = int(parts[6])
+        except (IndexError, ValueError):
+            self._send_error(400, "Invalid project or pipeline ID")
+            return
+
+        # Filter bridges for this pipeline
+        bridges = [
+            b
+            for b in self.server.data_store.bridges
+            if b["pipeline"]["id"] == pipeline_id
+        ]
+
+        self._send_paginated_response(bridges, page, per_page)
 
     def _send_json_response(self, data, status=200, headers=None):
         """Send JSON response"""
@@ -552,6 +753,7 @@ def main():
     logging.info("  GET /api/v4/projects/:id")
     logging.info("  GET /api/v4/projects/:id/pipelines")
     logging.info("  GET /api/v4/projects/:id/pipelines/:pipeline_id/jobs")
+    logging.info("  GET /api/v4/projects/:id/pipelines/:pipeline_id/bridges")
     logging.info("=" * 60)
     logging.info("Press Ctrl+C to stop")
     logging.info("")

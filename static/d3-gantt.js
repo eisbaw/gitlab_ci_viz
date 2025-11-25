@@ -101,6 +101,7 @@ class D3GanttChart {
         this.chartGroup.append('g').attr('class', 'contention-layer');
         this.chartGroup.append('g').attr('class', 'pipeline-backgrounds-layer');
         this.chartGroup.append('g').attr('class', 'pipeline-click-overlay-layer'); // Clickable overlay behind jobs
+        this.chartGroup.append('g').attr('class', 'arrows-layer'); // Arrows for parent-child pipeline relationships
         this.chartGroup.append('g').attr('class', 'bars-layer');
         this.chartGroup.append('g').attr('class', 'running-stripes-layer'); // Animated stripes for running jobs
         this.chartGroup.append('g').attr('class', 'avatars-layer');
@@ -117,6 +118,19 @@ class D3GanttChart {
             .attr('cx', this.avatarSize / 2)
             .attr('cy', this.avatarSize / 2)
             .attr('r', this.avatarSize / 2);
+
+        // Define arrowhead marker for parent-child pipeline arrows
+        defs.append('marker')
+            .attr('id', 'arrowhead')
+            .attr('viewBox', '0 -5 10 10')
+            .attr('refX', 8)
+            .attr('refY', 0)
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M0,-5L10,0L0,5')
+            .attr('fill', '#666');
 
         // Define diagonal stripe pattern for running jobs (warning tape effect)
         // Pattern width is 28px, containing two 14px stripes (one visible, one transparent)
@@ -290,6 +304,7 @@ class D3GanttChart {
         this.renderGrid(width, height);
         this.renderContention(width);
         this.renderPipelineBackgrounds(rows);
+        this.renderArrows(rows);
         this.renderBars(rows);
         this.renderRunningStripes(rows);
         this.renderAvatars(rows);
@@ -638,6 +653,7 @@ class D3GanttChart {
             this.renderGrid(this.getChartWidth(), this.getChartHeight());
             this.renderContention(this.getChartWidth());
             this.renderPipelineBackgrounds(rows);
+            this.renderArrows(rows, 'zoom');
             // Use zoom mode for minimal DOM updates (only x-positions and widths)
             this.renderBars(rows, 'zoom');
             this.renderRunningStripes(rows, 'zoom');
@@ -740,6 +756,121 @@ class D3GanttChart {
                 return Math.max(w, 2); // Minimum 2px width
             })
             .attr('height', axisHeight);
+    }
+
+    /**
+     * Render arrows connecting parent pipelines to their child pipelines
+     * @param {Array} rows - Row data from transformToRows()
+     * @param {string} mode - 'full' or 'zoom' for rendering optimization
+     */
+    renderArrows(rows, mode = 'full') {
+        const arrowsLayer = this.chartGroup.select('.arrows-layer');
+
+        // Build map of pipeline ID to row index for quick lookup
+        const pipelineRowMap = new Map();
+        rows.forEach((row, index) => {
+            if (row.type === 'pipeline' && row.pipeline) {
+                pipelineRowMap.set(row.pipeline.id, { row, index });
+            }
+        });
+
+        // Find all parent-child relationships
+        const arrowData = [];
+        rows.forEach((row, rowIndex) => {
+            if (row.type === 'pipeline' && row.pipeline) {
+                const pipeline = row.pipeline;
+
+                // Check if this pipeline has child pipelines
+                if (pipeline.childPipelines && pipeline.childPipelines.length > 0) {
+                    for (const childPipeline of pipeline.childPipelines) {
+                        const childInfo = pipelineRowMap.get(childPipeline.id);
+                        if (childInfo) {
+                            arrowData.push({
+                                parentPipeline: pipeline,
+                                parentRow: row,
+                                parentIndex: rowIndex,
+                                childPipeline: childPipeline,
+                                childRow: childInfo.row,
+                                childIndex: childInfo.index
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        // Fast path for zoom: only update path positions
+        if (mode === 'zoom') {
+            arrowsLayer.selectAll('path.pipeline-arrow')
+                .attr('d', d => this.generateArrowPath(d));
+            return;
+        }
+
+        // Full render path
+        const arrows = arrowsLayer.selectAll('path.pipeline-arrow')
+            .data(arrowData, d => `${d.parentPipeline.id}-${d.childPipeline.id}`);
+
+        arrows.join(
+            enter => enter.append('path')
+                .attr('class', 'pipeline-arrow')
+                .attr('d', d => this.generateArrowPath(d))
+                .attr('fill', 'none')
+                .attr('stroke', '#666')
+                .attr('stroke-width', 1.5)
+                .attr('stroke-dasharray', '4,2')
+                .attr('marker-end', 'url(#arrowhead)')
+                .attr('opacity', 0.7)
+                .append('title')
+                    .text(d => `Pipeline #${d.parentPipeline.id} triggers #${d.childPipeline.id}`),
+            update => update
+                .attr('d', d => this.generateArrowPath(d))
+        );
+    }
+
+    /**
+     * Generate SVG path for arrow between parent and child pipeline
+     * Uses a curved bezier path for better aesthetics
+     */
+    generateArrowPath(arrowData) {
+        const { parentRow, parentIndex, childRow, childIndex } = arrowData;
+
+        // Calculate parent bar position (left edge, vertical center of bar)
+        const parentStartX = this.xScale(new Date(parentRow.start));
+        const parentBarY = this.yScale(parentIndex) + (this.rowHeight - this.barHeight) / 2;
+        const parentY = parentBarY + this.barHeight / 2;
+
+        // Calculate child bar position (left edge, vertical center of bar)
+        const childStartX = this.xScale(new Date(childRow.start));
+        const childBarY = this.yScale(childIndex) + (this.rowHeight - this.barHeight) / 2;
+        const childY = childBarY + this.barHeight / 2;
+
+        // Start from left edge of parent
+        const startX = parentStartX;
+        const startY = parentY;
+
+        // End at left edge of child
+        const endX = childStartX;
+        const endY = childY;
+
+        // Calculate control points for bezier curve
+        // Arrow goes from parent's left edge to child's left edge
+        const yDiff = endY - startY;
+
+        // For left-to-left arrows, curve to the left of both points
+        const curveOffset = Math.max(30, Math.min(Math.abs(yDiff) * 0.3, 60));
+
+        if (yDiff === 0) {
+            // Same row - simple horizontal line
+            return `M ${startX} ${startY} L ${endX} ${endY}`;
+        } else {
+            // Curve to the left of both bars, then down/up to the child
+            const leftOffset = -curveOffset; // Curve goes left
+            const cp1x = startX + leftOffset;
+            const cp1y = startY;
+            const cp2x = endX + leftOffset;
+            const cp2y = endY;
+            return `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+        }
     }
 
     /**
