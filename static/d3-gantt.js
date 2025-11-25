@@ -774,6 +774,19 @@ class D3GanttChart {
             }
         });
 
+        // Helper to find job indices for an expanded pipeline
+        const findJobIndices = (pipelineId, startIndex) => {
+            let firstJobIndex = -1;
+            let lastJobIndex = -1;
+            for (let j = startIndex + 1; j < rows.length && rows[j].type === 'job'; j++) {
+                if (rows[j].pipelineId === pipelineId) {
+                    if (firstJobIndex === -1) firstJobIndex = j;
+                    lastJobIndex = j;
+                }
+            }
+            return { firstJobIndex, lastJobIndex };
+        };
+
         // Find all parent-child relationships
         const arrowData = [];
         rows.forEach((row, rowIndex) => {
@@ -782,16 +795,30 @@ class D3GanttChart {
 
                 // Check if this pipeline has child pipelines
                 if (pipeline.childPipelines && pipeline.childPipelines.length > 0) {
+                    // Get job indices if this pipeline is expanded
+                    const parentJobIndices = row.expanded
+                        ? findJobIndices(pipeline.id, rowIndex)
+                        : { firstJobIndex: -1, lastJobIndex: -1 };
+
                     for (const childPipeline of pipeline.childPipelines) {
                         const childInfo = pipelineRowMap.get(childPipeline.id);
                         if (childInfo) {
+                            // Get job indices if child pipeline is expanded
+                            const childJobIndices = childInfo.row.expanded
+                                ? findJobIndices(childPipeline.id, childInfo.index)
+                                : { firstJobIndex: -1, lastJobIndex: -1 };
+
                             arrowData.push({
                                 parentPipeline: pipeline,
                                 parentRow: row,
                                 parentIndex: rowIndex,
+                                parentFirstJobIndex: parentJobIndices.firstJobIndex,
+                                parentLastJobIndex: parentJobIndices.lastJobIndex,
                                 childPipeline: childPipeline,
                                 childRow: childInfo.row,
-                                childIndex: childInfo.index
+                                childIndex: childInfo.index,
+                                childFirstJobIndex: childJobIndices.firstJobIndex,
+                                childLastJobIndex: childJobIndices.lastJobIndex
                             });
                         }
                     }
@@ -830,19 +857,39 @@ class D3GanttChart {
     /**
      * Generate SVG path for arrow between parent and child pipeline
      * Uses a curved bezier path for better aesthetics
+     * Arrows connect at left-middle of pipeline boxes (expanded or collapsed)
      */
     generateArrowPath(arrowData) {
-        const { parentRow, parentIndex, childRow, childIndex } = arrowData;
+        const {
+            parentRow, parentIndex, parentFirstJobIndex, parentLastJobIndex,
+            childRow, childIndex, childFirstJobIndex, childLastJobIndex
+        } = arrowData;
 
-        // Calculate parent bar position (left edge, vertical center of bar)
+        // Calculate parent Y position (vertical middle of pipeline box)
         const parentStartX = this.xScale(new Date(parentRow.start));
-        const parentBarY = this.yScale(parentIndex) + (this.rowHeight - this.barHeight) / 2;
-        const parentY = parentBarY + this.barHeight / 2;
+        let parentY;
+        if (parentRow.expanded && parentFirstJobIndex >= 0 && parentLastJobIndex >= 0) {
+            // Expanded: middle of the pipeline box spanning all jobs
+            const boxTop = this.yScale(parentFirstJobIndex) - 2;
+            const boxBottom = this.yScale(parentLastJobIndex) + this.rowHeight + 2;
+            parentY = (boxTop + boxBottom) / 2;
+        } else {
+            // Collapsed: middle of the pipeline row
+            parentY = this.yScale(parentIndex) + this.rowHeight / 2;
+        }
 
-        // Calculate child bar position (left edge, vertical center of bar)
+        // Calculate child Y position (vertical middle of pipeline box)
         const childStartX = this.xScale(new Date(childRow.start));
-        const childBarY = this.yScale(childIndex) + (this.rowHeight - this.barHeight) / 2;
-        const childY = childBarY + this.barHeight / 2;
+        let childY;
+        if (childRow.expanded && childFirstJobIndex >= 0 && childLastJobIndex >= 0) {
+            // Expanded: middle of the pipeline box spanning all jobs
+            const boxTop = this.yScale(childFirstJobIndex) - 2;
+            const boxBottom = this.yScale(childLastJobIndex) + this.rowHeight + 2;
+            childY = (boxTop + boxBottom) / 2;
+        } else {
+            // Collapsed: middle of the pipeline row
+            childY = this.yScale(childIndex) + this.rowHeight / 2;
+        }
 
         // Start from left edge of parent
         const startX = parentStartX;
