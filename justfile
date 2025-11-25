@@ -77,3 +77,23 @@ clean-chrome:
     echo "Removing Chrome profile directory: $CHROME_PROFILE_DIR"
     rm -rf "$CHROME_PROFILE_DIR"
     echo "Chrome profile cleaned"
+
+# Update D3.js to latest v7 (or specify major version)
+update-d3 VERSION="7":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Downloading D3.js v{{ VERSION }} (latest)..."
+    curl -sSL "https://d3js.org/d3.v{{ VERSION }}.min.js" -o static/d3.v7.min.js
+    echo ""
+    echo "Verifying download..."
+    ACTUAL_VERSION=$(head -c 100 static/d3.v7.min.js | grep -o "v[0-9.]*" || echo "unknown")
+    echo "Downloaded D3.js version: $ACTUAL_VERSION"
+    FILE_SIZE=$(ls -lh static/d3.v7.min.js | awk '{print $5}')
+    echo "File size: $FILE_SIZE"
+    echo ""
+    echo "✓ D3.js updated successfully"
+    echo ""
+    echo "Next steps:"
+    echo "1. Test the application: just run-mock"
+    echo "2. Open http://localhost:8000 and verify GANTT chart renders"
+    echo "3. Check browser console for D3.js errors"

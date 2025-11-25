@@ -1195,10 +1195,10 @@ Measured from page load to interactive timeline (includes API fetch + transforma
 
 ### D3.js Visualization Library
 
-- **Version**: 7 (latest)
-- **Source**: CDN (https://d3js.org/d3.v7.min.js)
-- **Loading**: Loaded from CDN in `index.html`
-- **Size**: ~250KB (minified)
+- **Version**: 7.9.0 (locked locally)
+- **Source**: Local file (`static/d3.v7.min.js`)
+- **Loading**: Loaded from local static assets in `index.html`
+- **Size**: ~274KB (minified)
 - **License**: BSD 3-Clause
 
 #### Why D3.js?
@@ -1235,16 +1235,26 @@ The project uses these D3.js modules:
 
 #### Updating D3.js
 
-D3.js is loaded from CDN, so updates are automatic when D3 releases new versions. To pin to a specific version:
+D3.js is locked to a specific version (7.9.0) in the `static/` directory. This ensures:
+- **Offline functionality**: No CDN dependency
+- **Reproducible builds**: Same version across all environments
+- **Controlled updates**: Explicit version upgrades
 
-```html
-<!-- In index.html, change: -->
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<!-- To specific version: -->
-<script src="https://d3js.org/d3.v7.9.0.min.js"></script>
+To update D3.js to a newer version:
+
+```bash
+# Using the justfile recipe (recommended):
+just update-d3        # Updates to latest v7
+just update-d3 8      # Updates to latest v8 (when available)
+
+# Or manually:
+curl -sSL https://d3js.org/d3.v7.min.js -o static/d3.v7.min.js
 ```
 
-**Note**: Major version changes (v7 → v8) may require code updates. Test thoroughly after upgrading.
+**Note**: Major version changes (v7 → v8) may require code updates in `static/d3-gantt.js`. Test thoroughly after upgrading:
+- Run `just test` to verify backend functionality
+- Open `http://localhost:8000` and test GANTT visualization
+- Check browser console for any D3.js errors
 
 ### Python Backend: Standard Library Only
 
