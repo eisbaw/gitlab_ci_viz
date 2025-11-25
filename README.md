@@ -2,6 +2,8 @@
 
 A web-based GANTT chart visualization tool for GitLab CI/CD pipelines and jobs, showing activity across multiple projects and runners organized by user.
 
+![GitLab CI GANTT Visualizer](docs/screenshot.mock-run.jpg)
+
 ## Overview
 
 This tool provides CI/CD Activity Intelligence by transforming GitLab's project-centric pipeline data into user-centric activity timelines. It enables DevOps engineers and team leads to:
@@ -77,10 +79,10 @@ This tool provides CI/CD Activity Intelligence by transforming GitLab's project-
 - [CLI Arguments Reference](#cli-arguments-reference)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
-- [Development](#development)
 - [Performance and Scaling](#performance-and-scaling)
 - [Security](#security)
 - [Dependencies](#dependencies)
+- [Development](#development)
 
 ## Installation
 
@@ -956,172 +958,6 @@ When reporting issues, include:
 - Full error message from browser console and server logs
 - Command used to start the server
 
-## Development
-
-### Code Style Guide
-
-#### JavaScript Type Annotations
-
-All JavaScript modules use JSDoc type annotations to provide type safety without TypeScript. This enables IDE autocomplete, catches type errors before runtime, and serves as inline documentation.
-
-**Required Annotations:**
-
-1. **All public functions** must have `@param` and `@return` annotations:
-   ```javascript
-   /**
-    * Format duration in human-readable format
-    * @param {number|null} seconds - Duration in seconds
-    * @returns {string} Human-readable duration (e.g., "1h 23m 45s")
-    */
-   static formatDuration(seconds) {
-       // implementation
-   }
-   ```
-
-2. **Complex objects** must have `@typedef` definitions:
-   ```javascript
-   /**
-    * @typedef {Object} ContentionPeriod
-    * @property {Date} start - Start time of contention period
-    * @property {Date} end - End time of contention period
-    * @property {number} count - Number of concurrent pipelines
-    * @property {string} level - Contention level: 'low', 'medium', 'high', 'critical'
-    */
-   ```
-
-3. **Class constructors** must document all parameters:
-   ```javascript
-   /**
-    * Create a Pipeline instance
-    * @param {number} id - Pipeline ID
-    * @param {number} projectId - Project ID
-    * @param {string} status - Pipeline status
-    */
-   constructor(id, projectId, status) {
-       // implementation
-   }
-   ```
-
-**Type Notation:**
-- Optional parameters: `@param {string} [name]` or `@param {string} [name=default]`
-- Nullable types: `@param {string|null} value`
-- Arrays: `@param {User[]} users` or `@param {Array<User>} users`
-- Objects: `@param {{groups: VisGroup[], items: VisItem[]}} data`
-- Any type: `@param {*} context`
-- Void return: `@returns {void}`
-
-**Module-Level Documentation:**
-
-Each module should have a file-level comment describing its purpose and exports:
-```javascript
-/**
- * Data Transformer Module
- *
- * Transforms GitLab API responses into domain model and vis.js Timeline format.
- *
- * Exports:
- * - User (class)
- * - Pipeline (class)
- * - Job (class)
- * - DataTransformer (class with static methods)
- */
-```
-
-**Benefits:**
-- IDE autocomplete and IntelliSense
-- Early error detection (wrong types, missing parameters)
-- Self-documenting code
-- Easier refactoring (type usage tracking)
-- No build step required (unlike TypeScript)
-
-### Development Environment
-
-This project uses Nix for reproducible development environments.
-
-#### Enter Development Shell
-
-```bash
-nix-shell
-
-# This provides:
-# - Python 3.12.8
-# - glab CLI 1.51.0
-# - pytest 8.3.3 with coverage
-# - just task runner
-```
-
-### Available Commands
-
-The project uses `just` for task automation. All commands should be run inside `nix-shell`.
-
-```bash
-# Show all available commands
-just
-
-# Run tests with coverage
-just test
-
-# Run linting
-just lint
-
-# Run performance benchmarks
-just benchmark
-
-# Start development server with custom args
-just run --group 12345 --since "2 days ago"
-
-# Clean temporary files and caches
-just clean
-
-# Chrome DevTools integration
-just chrome              # Launch Chrome with project profile
-just chrome-devtools     # Launch with DevTools open
-just clean-chrome        # Clean Chrome profile data
-```
-
-### Running Tests
-
-```bash
-# Enter nix-shell first
-nix-shell
-
-# Run all tests with coverage
-just test
-
-# Or run pytest directly
-pytest -v --cov=. --cov-report=term-missing --cov-report=html
-
-# View HTML coverage report
-open htmlcov/index.html
-```
-
-### Project Structure
-
-```
-gitlab_ci_viz/
-├── serve.py              # Python backend (stdlib only)
-├── index.html            # Frontend application orchestration
-├── static/               # JavaScript modules and assets
-│   ├── logger.js                  # Logging infrastructure
-│   ├── error-formatter.js         # Error formatting
-│   ├── api-client.js              # GitLab API client
-│   ├── data-transformer.js        # Domain model
-│   ├── contention-analyzer.js     # Runner contention analysis
-│   └── d3-gantt.js                # D3.js GANTT renderer
-├── docs/                 # Architecture documentation
-│   └── architecture.md
-├── shell.nix             # Nix development environment
-├── justfile              # Task automation
-├── test/                 # Test suite
-│   ├── test_serve.py              # Backend unit tests
-│   ├── test_integration.py        # Integration tests
-│   └── run_performance_benchmarks.py  # Performance tests
-├── backlog/              # Project management
-│   ├── tasks/                     # Task tracking
-│   └── docs/                      # Domain documentation
-└── README.md            # This file
-```
-
 ## Performance and Scaling
 
 ### Performance Characteristics
@@ -1131,7 +967,7 @@ The tool has been benchmarked with the following performance characteristics (me
 | Operation | Duration | Threshold | % of Threshold |
 |-----------|----------|-----------|----------------|
 | Transform 1000 jobs to domain model | 2.9ms | 500ms | 0.6% |
-| Transform to vis.js format (500 items) | 2.3ms | 100ms | 2.3% |
+| Transform to timeline format (500 items) | 2.3ms | 100ms | 2.3% |
 | Full transformation (10 projects, 100 pipelines) | 52.7ms | 2000ms | 2.6% |
 | Auto-refresh (no data changes) | 2.4ms | 1000ms | 0.2% |
 
@@ -1479,6 +1315,172 @@ Consider lifting the stdlib-only constraint if:
 - **Status**: Active constraint
 - **Review trigger**: Maintenance burden or fundamental feature change
 - **Documented in**: README.md
+
+## Development
+
+### Code Style Guide
+
+#### JavaScript Type Annotations
+
+All JavaScript modules use JSDoc type annotations to provide type safety without TypeScript. This enables IDE autocomplete, catches type errors before runtime, and serves as inline documentation.
+
+**Required Annotations:**
+
+1. **All public functions** must have `@param` and `@return` annotations:
+   ```javascript
+   /**
+    * Format duration in human-readable format
+    * @param {number|null} seconds - Duration in seconds
+    * @returns {string} Human-readable duration (e.g., "1h 23m 45s")
+    */
+   static formatDuration(seconds) {
+       // implementation
+   }
+   ```
+
+2. **Complex objects** must have `@typedef` definitions:
+   ```javascript
+   /**
+    * @typedef {Object} ContentionPeriod
+    * @property {Date} start - Start time of contention period
+    * @property {Date} end - End time of contention period
+    * @property {number} count - Number of concurrent pipelines
+    * @property {string} level - Contention level: 'low', 'medium', 'high', 'critical'
+    */
+   ```
+
+3. **Class constructors** must document all parameters:
+   ```javascript
+   /**
+    * Create a Pipeline instance
+    * @param {number} id - Pipeline ID
+    * @param {number} projectId - Project ID
+    * @param {string} status - Pipeline status
+    */
+   constructor(id, projectId, status) {
+       // implementation
+   }
+   ```
+
+**Type Notation:**
+- Optional parameters: `@param {string} [name]` or `@param {string} [name=default]`
+- Nullable types: `@param {string|null} value`
+- Arrays: `@param {User[]} users` or `@param {Array<User>} users`
+- Objects: `@param {{users: User[], pipelines: Pipeline[]}} data`
+- Any type: `@param {*} context`
+- Void return: `@returns {void}`
+
+**Module-Level Documentation:**
+
+Each module should have a file-level comment describing its purpose and exports:
+```javascript
+/**
+ * Data Transformer Module
+ *
+ * Transforms GitLab API responses into domain model for timeline rendering.
+ *
+ * Exports:
+ * - User (class)
+ * - Pipeline (class)
+ * - Job (class)
+ * - DataTransformer (class with static methods)
+ */
+```
+
+**Benefits:**
+- IDE autocomplete and IntelliSense
+- Early error detection (wrong types, missing parameters)
+- Self-documenting code
+- Easier refactoring (type usage tracking)
+- No build step required (unlike TypeScript)
+
+### Development Environment
+
+This project uses Nix for reproducible development environments.
+
+#### Enter Development Shell
+
+```bash
+nix-shell
+
+# This provides:
+# - Python 3.12.8
+# - glab CLI 1.51.0
+# - pytest 8.3.3 with coverage
+# - just task runner
+```
+
+### Available Commands
+
+The project uses `just` for task automation. All commands should be run inside `nix-shell`.
+
+```bash
+# Show all available commands
+just
+
+# Run tests with coverage
+just test
+
+# Run linting
+just lint
+
+# Run performance benchmarks
+just benchmark
+
+# Start development server with custom args
+just run --group 12345 --since "2 days ago"
+
+# Clean temporary files and caches
+just clean
+
+# Chrome DevTools integration
+just chrome              # Launch Chrome with project profile
+just chrome-devtools     # Launch with DevTools open
+just clean-chrome        # Clean Chrome profile data
+```
+
+### Running Tests
+
+```bash
+# Enter nix-shell first
+nix-shell
+
+# Run all tests with coverage
+just test
+
+# Or run pytest directly
+pytest -v --cov=. --cov-report=term-missing --cov-report=html
+
+# View HTML coverage report
+open htmlcov/index.html
+```
+
+### Project Structure
+
+```
+gitlab_ci_viz/
+├── serve.py              # Python backend (stdlib only)
+├── index.html            # Frontend application orchestration
+├── static/               # JavaScript modules and assets
+│   ├── logger.js                  # Logging infrastructure
+│   ├── error-formatter.js         # Error formatting
+│   ├── api-client.js              # GitLab API client
+│   ├── data-transformer.js        # Domain model
+│   ├── contention-analyzer.js     # Runner contention analysis
+│   └── d3-gantt.js                # D3.js GANTT renderer
+├── docs/                 # Architecture documentation
+│   └── architecture.md
+├── shell.nix             # Nix development environment
+├── justfile              # Task automation
+├── test/                 # Test suite
+│   ├── test_serve.py              # Backend unit tests
+│   ├── test_integration.py        # Integration tests
+│   └── run_performance_benchmarks.py  # Performance tests
+├── backlog/              # Project management
+│   ├── tasks/                     # Task tracking
+│   └── docs/                      # Domain documentation
+└── README.md            # This file
+```
 
 ## License
 

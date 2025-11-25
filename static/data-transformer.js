@@ -1,7 +1,7 @@
 /**
  * Data Transformer Module
  *
- * Transforms GitLab API responses into domain model and vis.js Timeline format.
+ * Transforms GitLab API responses into domain model and timeline format.
  * Implements grouping organization (by project or user) with proper hierarchical grouping.
  *
  * Domain Model:
@@ -11,7 +11,7 @@
  * - Activity: Represents a time-bound activity (pipeline or job) on the timeline
  *
  * Data Flow:
- * GitLab API → Domain Model → vis.js format
+ * GitLab API → Domain Model → Timeline format
  */
 
 /**
@@ -491,7 +491,7 @@ class BridgeJob {
 
 /**
  * Data Transformer
- * Transforms GitLab API data to domain model and vis.js format
+ * Transforms GitLab API data to domain model and timeline format
  */
 class DataTransformer {
     /**
@@ -773,10 +773,10 @@ class DataTransformer {
     }
 
     /**
-     * Transform domain model to vis.js Timeline format
+     * Transform domain model to timeline format
      *
      * @param {GroupKey[]} groups - Array of GroupKey domain objects
-     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
+     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for timeline
      */
     static transformToVisFormat(groups) {
         const visGroups = [];
@@ -854,11 +854,11 @@ class DataTransformer {
     }
 
     /**
-     * Main transformation pipeline: GitLab API → vis.js format
+     * Main transformation pipeline: GitLab API → timeline format
      *
      * @param {Object[]} pipelines - Array of pipeline objects from GitLab API
      * @param {Object[]} jobs - Array of job objects from GitLab API
-     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for vis.js Timeline
+     * @returns {{groups: VisGroup[], items: VisItem[]}} Object with groups and items arrays for timeline
      * @throws {Error} If no groups/pipelines found (indicates API issue or wrong time range)
      */
     static transform(pipelines, jobs, projectMap = null) {
@@ -879,7 +879,7 @@ class DataTransformer {
             throw new Error('Transformation produced no groups - this indicates a data integrity issue');
         }
 
-        // Step 2: Transform to vis.js format
+        // Step 2: Transform to timeline format
         const result = this.transformToVisFormat(groups);
         console.log(`Generated ${result.groups.length} groups and ${result.items.length} timeline items`);
 

@@ -17,7 +17,7 @@
 
 /**
  * @typedef {Object} VisBackgroundItem
- * @property {string} id - Unique identifier for vis.js item
+ * @property {string} id - Unique identifier for timeline item
  * @property {Date} start - Start time of background item
  * @property {Date} end - End time of background item
  * @property {string} type - Item type (always 'background')
@@ -198,10 +198,10 @@ const ContentionAnalyzer = (function() {
     }
 
     /**
-     * Convert contention periods to vis.js background items
+     * Convert contention periods to background items for timeline
      *
      * @param {ContentionPeriod[]} contentionPeriods - Array from calculateContentionPeriods()
-     * @returns {VisBackgroundItem[]} Array of vis.js background item objects
+     * @returns {VisBackgroundItem[]} Array of background item objects for timeline
      */
     function toVisBackgroundItems(contentionPeriods) {
         return contentionPeriods.map((period, index) => {

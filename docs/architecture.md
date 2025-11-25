@@ -408,7 +408,7 @@ Once server starts, configuration is frozen:
 
 Frontend can change visualization settings:
 
-- Zoom level and pan position (vis.js Timeline state)
+- Zoom level and pan position (D3 timeline state)
 - Collapsed/expanded groups (stored in Timeline DataSet)
 - Auto-refresh pause/resume (JavaScript variable)
 
