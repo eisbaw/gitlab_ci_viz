@@ -699,9 +699,9 @@ def main():
     server_address = (bind_address, args.port)
     httpd = HTTPServer(server_address, handler_class)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("GitLab CI GANTT Visualizer Server")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Server running at: http://localhost:{args.port}/")
     print(f"GitLab URL: {args.gitlab_url}")
     if args.group:
@@ -710,7 +710,7 @@ def main():
         print(f"Project IDs: {args.projects}")
     print(f"Time range: since {args.since}")
     print("\nPress Ctrl+C to stop the server")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     logging.info(f"HTTP server listening on port {args.port}")
 

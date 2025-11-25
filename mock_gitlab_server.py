@@ -809,7 +809,7 @@ class DynamicJobUpdater(threading.Thread):
                     job["started_at"] = now.isoformat()
                     job["runner"] = {
                         "id": (job["id"] % 5) + 1,
-                        "description": f'runner-{(job["id"] % 5) + 1}',
+                        "description": f"runner-{(job['id'] % 5) + 1}",
                         "active": True,
                     }
                     logging.info(
@@ -937,7 +937,7 @@ class DynamicJobUpdater(threading.Thread):
                 "id": random.randint(1, 3),
                 "username": random.choice(["alice", "bob", "charlie"]),
                 "name": random.choice(["Alice Anderson", "Bob Brown", "Charlie Chen"]),
-                "avatar_url": f"https://www.gravatar.com/avatar/{random.randint(1,100)}?d=identicon",
+                "avatar_url": f"https://www.gravatar.com/avatar/{random.randint(1, 100)}?d=identicon",
             },
             # 70% of new pipelines will be cancelled
             "_will_cancel": random.random() < 0.7,
