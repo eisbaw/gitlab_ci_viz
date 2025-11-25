@@ -1106,7 +1106,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-project')
                     .attr('x', 0)
                     .attr('y', 0)
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', 'end')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {
@@ -1119,7 +1119,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-sha')
                     .attr('x', 0)
                     .attr('y', 24)
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', 'end')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {
@@ -1132,7 +1132,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-ref')
                     .attr('x', 0)
                     .attr('y', 48)
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', 'end')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {

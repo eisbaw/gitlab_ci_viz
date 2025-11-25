@@ -1,0 +1,379 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="gitlab-ci-viz-architecture" name="GitLab CI Visualization Architecture">
+    <mxGraphModel dx="1434" dy="844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="GitLab CI Visualization - Web Frontend Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Backend Layer -->
+        <mxCell id="backend-layer" value="Backend Layer (Python)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="300" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="serve-py" value="serve.py&#xa;&#xa;• Parse CLI args&#xa;• Obtain GitLab token&#xa;• Generate CONFIG&#xa;• Inject into HTML&#xa;• Serve static files&#xa;• Start mock server" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- External Systems -->
+        <mxCell id="external-layer" value="External Systems" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="300" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gitlab-api" value="GitLab API v4&#xa;&#xa;• Projects&#xa;• Pipelines (GraphQL)&#xa;• Jobs&#xa;• Users" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="360" width="120" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d3-lib" value="D3.js (CDN)&#xa;&#xa;• SVG rendering&#xa;• Data binding&#xa;• Zoom/Pan&#xa;• Scales" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="200" y="360" width="120" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Browser Layer -->
+        <mxCell id="browser-layer" value="Browser Layer (JavaScript)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="380" y="80" width="980" height="680" as="geometry" />
+        </mxCell>
+
+        <!-- Orchestration -->
+        <mxCell id="index-html" value="index.html&#xa;&#xa;• Load CONFIG&#xa;• Initialize modules&#xa;• Fetch data&#xa;• Render visualization&#xa;• Handle UI events&#xa;• Auto-refresh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;spacingLeft=10;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="120" width="220" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- API Client Module -->
+        <mxCell id="api-client" value="api-client.js&#xa;GitLabAPIClient&#xa;&#xa;• Authenticated requests&#xa;• GraphQL queries&#xa;• REST fallback&#xa;• Pagination handling&#xa;• Error categorization&#xa;• Timeout protection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="660" y="120" width="180" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Utility Modules -->
+        <mxCell id="logger" value="logger.js&#xa;Logger&#xa;&#xa;• DEBUG/INFO/WARN/ERROR&#xa;• Timestamps&#xa;• Console output" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="880" y="120" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="error-formatter" value="error-formatter.js&#xa;formatError()&#xa;&#xa;• User-friendly messages&#xa;• Resolution steps&#xa;• HTML escaping" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="120" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Data Transformation Layer -->
+        <mxCell id="transform-layer" value="Data Transformation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontSize=12;fontStyle=1;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="300" width="440" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="data-transformer" value="data-transformer.js&#xa;DataTransformer&#xa;&#xa;• transformToDomainModel()&#xa;• transformToVisFormat()&#xa;• Group by project/user&#xa;• Calculate time ranges&#xa;• Format durations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="420" y="340" width="200" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="domain-model" value="Domain Model&#xa;&#xa;• GroupKey&#xa;  - Project/User grouping&#xa;• Pipeline&#xa;  - Status, timestamps&#xa;  - Job collection&#xa;• Job&#xa;  - Status, runner&#xa;  - Time calculations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="640" y="340" width="180" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="contention-analyzer" value="contention-analyzer.js&#xa;ContentionAnalyzer&#xa;&#xa;• Sweep-line algorithm&#xa;• Detect overlaps&#xa;• Calculate concurrency&#xa;• Merge periods&#xa;• Level categorization" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="880" y="300" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Visualization Layer -->
+        <mxCell id="viz-layer" value="Visualization Layer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=12;fontStyle=1;dashed=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="580" width="640" height="160" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d3-gantt" value="d3-gantt.js&#xa;D3GanttChart&#xa;&#xa;• Render SVG layers&#xa;• Time-based sorting&#xa;• Expand/collapse&#xa;• Zoom/pan controls&#xa;• Interactive tooltips&#xa;• Status colors&#xa;• Running animations&#xa;• Avatar rendering" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="420" y="620" width="600" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- SVG Structure -->
+        <mxCell id="svg-structure" value="SVG Structure&#xa;&#xa;1. Grid lines&#xa;2. Contention backgrounds&#xa;3. Pipeline backgrounds&#xa;4. Bars (pipelines + jobs)&#xa;5. Running stripes&#xa;6. Avatars&#xa;7. Current time indicator&#xa;8. Axis labels" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="580" width="240" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- Data Flow Arrows -->
+
+        <!-- serve.py to index.html -->
+        <mxCell id="arrow1" value="CONFIG injection" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#dae8fc;strokeColor=#6c8ebf;" edge="1" parent="1" source="serve-py" target="index-html">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- GitLab API to api-client -->
+        <mxCell id="arrow2" value="REST/GraphQL" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1" edge="1" parent="1" source="gitlab-api" target="api-client">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="430" />
+              <mxPoint x="360" y="225" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- index.html to api-client -->
+        <mxCell id="arrow3" value="1. Fetch data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#dae8fc;strokeColor=#6c8ebf;" edge="1" parent="1" source="index-html" target="api-client">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- api-client to data-transformer -->
+        <mxCell id="arrow4" value="2. Raw API data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" edge="1" parent="1" source="api-client" target="data-transformer">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="280" />
+              <mxPoint x="520" y="280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- data-transformer to domain-model -->
+        <mxCell id="arrow5" value="Creates" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" edge="1" parent="1" source="data-transformer" target="domain-model">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- domain-model to contention-analyzer -->
+        <mxCell id="arrow6" value="3. Pipelines" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" edge="1" parent="1" source="domain-model" target="contention-analyzer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- domain-model to d3-gantt -->
+        <mxCell id="arrow7" value="4. Domain data" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;" edge="1" parent="1" source="domain-model" target="d3-gantt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- contention-analyzer to d3-gantt -->
+        <mxCell id="arrow8" value="Contention periods" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#ffe6cc;strokeColor=#d79b00;" edge="1" parent="1" source="contention-analyzer" target="d3-gantt">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- d3-gantt to svg-structure -->
+        <mxCell id="arrow9" value="Renders" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#d5e8d4;strokeColor=#82b366;" edge="1" parent="1" source="d3-gantt" target="svg-structure">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- D3.js to d3-gantt -->
+        <mxCell id="arrow10" value="Library" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1" edge="1" parent="1" source="d3-lib" target="d3-gantt">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="430" />
+              <mxPoint x="360" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Utility connections -->
+        <mxCell id="arrow11" value="Logs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1" edge="1" parent="1" source="api-client" target="logger">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="100" />
+              <mxPoint x="960" y="100" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="arrow12" value="Format errors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=1;fillColor=#f8cecc;strokeColor=#b85450;dashed=1" edge="1" parent="1" source="index-html" target="error-formatter">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend" value="Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="300" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-backend" value="Backend (Python)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="60" y="620" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-api" value="API Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="200" y="620" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-transform" value="Transformation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="60" y="660" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-viz" value="Visualization" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;" vertex="1" parent="1">
+          <mxGeometry x="200" y="660" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-util" value="Utility Modules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="60" y="700" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-external" value="External Systems" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="700" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Key Design Principles -->
+        <mxCell id="principles" value="Key Design Principles" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=12;fontStyle=1;align=left" vertex="1" parent="1">
+          <mxGeometry x="40" y="800" width="1320" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle1" value="✓ Vanilla JS (No Frameworks)&#xa;Libraries over frameworks&#xa;No framework lock-in&#xa;Direct DOM control" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle2" value="✓ Clear Module Boundaries&#xa;No circular dependencies&#xa;Bottom-up composition&#xa;Single responsibility" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="280" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle3" value="✓ Fail-Fast Error Handling&#xa;Explicit validation&#xa;Contextual errors&#xa;User-friendly messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="500" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle4" value="✓ Domain Model Layer&#xa;Separation of concerns&#xa;Testable business logic&#xa;Single source of truth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="720" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle5" value="✓ Performance Optimized&#xa;Cached transformations&#xa;Minimal DOM updates&#xa;GPU-accelerated animations" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="940" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="principle6" value="✓ Accessibility First&#xa;ARIA labels&#xa;Keyboard navigation&#xa;Screen reader support" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="840" width="200" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Data Flow Sequence -->
+        <mxCell id="sequence" value="Data Flow Sequence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontSize=12;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="40" y="1020" width="1320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq1" value="1. CLI Args" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1060" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#6c8ebf;strokeColor=#6c8ebf;" edge="1" parent="1" source="seq1" target="seq2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq2" value="2. CONFIG" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="180" y="1060" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#6c8ebf;strokeColor=#6c8ebf;" edge="1" parent="1" source="seq2" target="seq3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq3" value="3. API Data" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1060" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#d79b00;strokeColor=#d79b00;" edge="1" parent="1" source="seq3" target="seq4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq4" value="4. Domain Model" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1060" width="110" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#d79b00;strokeColor=#d79b00;" edge="1" parent="1" source="seq4" target="seq5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq5" value="5. Contention" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="550" y="1060" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#82b366;strokeColor=#82b366;" edge="1" parent="1" source="seq5" target="seq6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq6" value="6. D3 Render" style="ellipse;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;" vertex="1" parent="1">
+          <mxGeometry x="670" y="1060" width="100" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#82b366;strokeColor=#82b366;" edge="1" parent="1" source="seq6" target="seq7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq7" value="7. SVG Timeline" style="ellipse;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;" vertex="1" parent="1">
+          <mxGeometry x="790" y="1060" width="110" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#82b366;strokeColor=#82b366;" edge="1" parent="1" source="seq7" target="seq8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq8" value="8. User Interactions" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="920" y="1060" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="seq-arrow8" value="Auto-refresh" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#82b366;strokeColor=#82b366;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="seq8" target="seq3">
+          <mxGeometry x="0.5" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1100" y="1080" />
+              <mxPoint x="1100" y="1040" />
+              <mxPoint x="350" y="1040" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Module Dependencies -->
+        <mxCell id="deps" value="Module Dependencies (Bottom-Up Composition)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=12;fontStyle=1;align=center" vertex="1" parent="1">
+          <mxGeometry x="40" y="1160" width="1320" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-level1" value="Level 1: Pure Functions&#xa;(No dependencies)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=top;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="60" y="1200" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-logger-2" value="logger.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1240" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-error-2" value="error-formatter.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1290" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-level2" value="Level 2: Data Layer&#xa;(Uses Level 1)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="360" y="1200" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-api-2" value="api-client.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1240" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-transform-2" value="data-transformer.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1290" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-level3" value="Level 3: Analysis&#xa;(Uses Level 2)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=top;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="660" y="1200" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-contention-2" value="contention-analyzer.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="680" y="1240" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-level4" value="Level 4: Visualization&#xa;(Uses Level 1-3 + D3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="960" y="1200" width="260" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-gantt-2" value="d3-gantt.js" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="980" y="1240" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-level5" value="Level 5: Orchestration&#xa;(Uses all levels)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontSize=11;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1260" y="1200" width="100" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-index-2" value="index.html" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1270" y="1240" width="80" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Dependency arrows -->
+        <mxCell id="dep-arrow1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#6c8ebf;strokeColor=#6c8ebf;" edge="1" parent="1" source="dep-level1" target="dep-level2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-arrow2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#d79b00;strokeColor=#d79b00;" edge="1" parent="1" source="dep-level2" target="dep-level3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-arrow3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#82b366;strokeColor=#82b366;" edge="1" parent="1" source="dep-level3" target="dep-level4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dep-arrow4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;fillColor=#d6b656;strokeColor=#d6b656;" edge="1" parent="1" source="dep-level4" target="dep-level5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
