@@ -1059,7 +1059,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-project')
                     .attr('x', 0)
                     .attr('y', 0)
-                    .attr('text-anchor', 'end')
+                    .attr('text-anchor', 'start')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {
@@ -1072,7 +1072,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-sha')
                     .attr('x', 0)
                     .attr('y', 24)
-                    .attr('text-anchor', 'end')
+                    .attr('text-anchor', 'start')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {
@@ -1085,7 +1085,7 @@ class D3GanttChart {
                     .attr('class', 'pipeline-label-ref')
                     .attr('x', 0)
                     .attr('y', 48)
-                    .attr('text-anchor', 'end')
+                    .attr('text-anchor', 'start')
                     .attr('font-size', '24px')
                     .attr('font-weight', '600')
                     .attr('fill', d => {
@@ -1101,8 +1101,7 @@ class D3GanttChart {
 
         // Position the label groups (for both enter and update)
         mergedGroups.attr('transform', d => {
-            const boxWidth = this.xScale(d.maxTime) - this.xScale(d.minTime);
-            const x = this.xScale(d.minTime) + boxWidth - 10; // 10px padding from right edge
+            const x = this.xScale(d.minTime) - 10; // 10px padding to the left of the box
             const firstJobY = this.yScale(d.firstJobIndex) - 2;
             const jobCount = d.lastJobIndex - d.firstJobIndex + 1;
             const boxHeight = this.yScale(d.firstJobIndex + jobCount - 1) - this.yScale(d.firstJobIndex) + this.rowHeight + 4;
