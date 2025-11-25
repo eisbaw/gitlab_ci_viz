@@ -345,14 +345,21 @@ class Job {
     /**
      * Get effective start time for timeline
      * - Started jobs: use startedAt
-     * - Pending jobs (waiting for runners): use current time (positioned at "Now" line)
+     * - Finished jobs without startedAt: use createdAt (GitLab API edge case)
      * - Skipped/Manual/Canceled jobs: use createdAt (positioned at pipeline time)
+     * - Pending jobs (waiting for runners): use current time (positioned at "Now" line)
      * @returns {string} ISO 8601 timestamp
      */
     getStartTime() {
         // If job has started, use actual start time
         if (this.startedAt) {
             return this.startedAt;
+        }
+
+        // Finished jobs (success/failed) without startedAt: use createdAt
+        // This handles GitLab API edge cases where startedAt is null for completed jobs
+        if (this.finishedAt || this.status === 'success' || this.status === 'failed') {
+            return this.createdAt;
         }
 
         // Skipped, manual, and canceled jobs: use creation time (part of pipeline execution)
