@@ -101,10 +101,11 @@ class MockDataStore:
                     started_at = created_at + timedelta(minutes=1)
                     finished_at = started_at + timedelta(minutes=random.randint(5, 20))
                     duration = int((finished_at - started_at).total_seconds())
-                # Next 2 are running
+                # Next 2 are running (started recently, not hours ago)
                 elif i < 9:
                     status = "running"
-                    started_at = created_at + timedelta(minutes=1)
+                    # Running pipelines should start recently (5-15 min ago), not hours ago
+                    started_at = base_time - timedelta(minutes=random.randint(5, 15))
                     finished_at = None
                     duration = None
                 # Last one is pending
@@ -770,20 +771,29 @@ class MockGitLabHandler(BaseHTTPRequestHandler):
 
 
 class DynamicJobUpdater(threading.Thread):
-    """Background thread that updates job statuses over time to simulate real pipeline execution"""
+    """Background thread that updates job statuses and spawns new pipelines"""
 
-    def __init__(self, data_store, interval=5):
+    def __init__(self, data_store, interval=5, spawn_interval=60):
         super().__init__(daemon=True)
         self.data_store = data_store
         self.interval = interval
+        self.spawn_interval = spawn_interval
         self.running = True
+        self.last_spawn_time = time.time()
+        self.next_pipeline_id = (
+            200000  # Start new pipelines at high ID to avoid conflicts
+        )
 
     def run(self):
-        """Update job statuses periodically"""
-        logging.info(f"Dynamic job updater started (interval: {self.interval}s)")
+        """Update job statuses and spawn new pipelines periodically"""
+        logging.info(
+            f"Dynamic updater started (job interval: {self.interval}s, "
+            f"pipeline spawn interval: {self.spawn_interval}s)"
+        )
         while self.running:
             time.sleep(self.interval)
             self._update_jobs()
+            self._maybe_spawn_pipeline()
 
     def _update_jobs(self):
         """Transition pending → running → success/failed"""
@@ -834,6 +844,17 @@ class DynamicJobUpdater(threading.Thread):
                         if j["pipeline"]["id"] == pipeline["id"]
                     ]
 
+                    # Check if pipeline should be cancelled (marked for cancellation)
+                    if pipeline.get("_will_cancel") and pipeline["status"] == "running":
+                        # Cancel after running for 10-30 seconds
+                        if pipeline["started_at"]:
+                            started = datetime.fromisoformat(pipeline["started_at"])
+                            elapsed = (now - started).total_seconds()
+                            if elapsed > random.randint(10, 30):
+                                self._cancel_pipeline(pipeline, now)
+                                updated_count += 1
+                                continue
+
                     # Check if all jobs are finished
                     all_finished = all(
                         j["status"] in ["success", "failed", "skipped", "canceled"]
@@ -843,13 +864,24 @@ class DynamicJobUpdater(threading.Thread):
                     if all_finished:
                         # Pipeline succeeds only if all jobs succeeded
                         any_failed = any(j["status"] == "failed" for j in pipeline_jobs)
-                        pipeline["status"] = "failed" if any_failed else "success"
+                        any_canceled = any(
+                            j["status"] == "canceled" for j in pipeline_jobs
+                        )
+                        if any_canceled:
+                            pipeline["status"] = "canceled"
+                        elif any_failed:
+                            pipeline["status"] = "failed"
+                        else:
+                            pipeline["status"] = "success"
                         pipeline["finished_at"] = now.isoformat()
                         pipeline["updated_at"] = now.isoformat()
 
                         # Calculate total duration
-                        start_time = datetime.fromisoformat(pipeline["started_at"])
-                        pipeline["duration"] = int((now - start_time).total_seconds())
+                        if pipeline["started_at"]:
+                            start_time = datetime.fromisoformat(pipeline["started_at"])
+                            pipeline["duration"] = int(
+                                (now - start_time).total_seconds()
+                            )
 
                         logging.info(
                             f"Pipeline {pipeline['id']} finished: {pipeline['status']}"
@@ -871,6 +903,96 @@ class DynamicJobUpdater(threading.Thread):
 
             if updated_count > 0:
                 logging.debug(f"Updated {updated_count} items")
+
+    def _maybe_spawn_pipeline(self):
+        """Spawn a new pipeline every spawn_interval seconds (most get cancelled)"""
+        now_time = time.time()
+        if now_time - self.last_spawn_time < self.spawn_interval:
+            return
+
+        self.last_spawn_time = now_time
+        now = datetime.now(timezone.utc)
+
+        # Pick a random project
+        project = random.choice(self.data_store.projects)
+        project_id = project["id"]
+
+        # Create new pipeline
+        pipeline_id = self.next_pipeline_id
+        self.next_pipeline_id += 1
+
+        pipeline = {
+            "id": pipeline_id,
+            "project_id": project_id,
+            "status": "pending",
+            "ref": random.choice(["main", "develop", "feature-branch"]),
+            "sha": f"new{pipeline_id:08d}".ljust(40, "0"),
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "started_at": None,
+            "finished_at": None,
+            "duration": None,
+            "web_url": f"http://localhost:8001/{project['path_with_namespace']}/-/pipelines/{pipeline_id}",
+            "user": {
+                "id": random.randint(1, 3),
+                "username": random.choice(["alice", "bob", "charlie"]),
+                "name": random.choice(["Alice Anderson", "Bob Brown", "Charlie Chen"]),
+                "avatar_url": f"https://www.gravatar.com/avatar/{random.randint(1,100)}?d=identicon",
+            },
+            # 70% of new pipelines will be cancelled
+            "_will_cancel": random.random() < 0.7,
+        }
+
+        # Create jobs for the pipeline
+        stages = ["build", "test", "deploy"]
+        new_jobs = []
+        for stage_idx, stage in enumerate(stages):
+            job_id = pipeline_id * 10 + stage_idx
+            new_jobs.append(
+                {
+                    "id": job_id,
+                    "name": stage,
+                    "stage": stage,
+                    "status": "pending",
+                    "pipeline": {
+                        "id": pipeline_id,
+                        "project_id": project_id,
+                        "ref": pipeline["ref"],
+                    },
+                    "created_at": now.isoformat(),
+                    "started_at": None,
+                    "finished_at": None,
+                    "duration": None,
+                    "web_url": f"http://localhost:8001/{project['path_with_namespace']}/-/jobs/{job_id}",
+                    "user": pipeline["user"],
+                    "runner": None,
+                }
+            )
+
+        # Add to data store (with lock)
+        with self.data_store._lock:
+            self.data_store.pipelines.append(pipeline)
+            self.data_store.jobs.extend(new_jobs)
+
+        logging.info(
+            f"Spawned new pipeline {pipeline_id} in {project['name']} "
+            f"(will_cancel: {pipeline['_will_cancel']})"
+        )
+
+    def _cancel_pipeline(self, pipeline, now):
+        """Cancel a pipeline and its jobs"""
+        pipeline["status"] = "canceled"
+        pipeline["finished_at"] = now.isoformat()
+        pipeline["updated_at"] = now.isoformat()
+
+        # Cancel all pending/running jobs
+        for job in self.data_store.jobs:
+            if job["pipeline"]["id"] == pipeline["id"]:
+                if job["status"] in ["pending", "running"]:
+                    job["status"] = "canceled"
+                    job["finished_at"] = now.isoformat()
+
+        logging.info(f"Pipeline {pipeline['id']} cancelled")
 
     def stop(self):
         """Stop the updater thread"""
