@@ -24,6 +24,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
+# GraphQL pagination constants
+GRAPHQL_PAGE_SIZE = 100
+GRAPHQL_JOBS_PER_PIPELINE = 100
+
 
 class MockDataStore:
     """In-memory data store for mock GitLab data with dynamic updates"""
@@ -447,6 +451,185 @@ class MockGitLabHandler(BaseHTTPRequestHandler):
         else:
             self._send_error(404, "Not Found")
 
+    def do_POST(self):
+        """Handle POST requests (GraphQL)"""
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/graphql":
+            self._handle_graphql()
+        else:
+            self._send_error(404, "Not Found")
+
+    def _handle_graphql(self):
+        """Handle GraphQL queries for pipelines with nested jobs"""
+        try:
+            # Read request body
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            request = json.loads(body)
+
+            variables = request.get("variables", {})
+            project_path = variables.get("projectId", "")
+            updated_after = variables.get("updatedAfter")
+            cursor = variables.get("after")
+
+            # Find project by path (projects are static, no lock needed)
+            project = next(
+                (
+                    p
+                    for p in self.server.data_store.projects
+                    if p["path_with_namespace"] == project_path
+                ),
+                None,
+            )
+
+            if not project:
+                self._send_json_response({"data": {"project": None}})
+                return
+
+            project_id = project["id"]
+
+            # Acquire lock to safely read dynamic data (jobs/pipelines can change)
+            with self.server.data_store._lock:
+                # Copy pipelines for this project
+                pipelines = [
+                    p.copy()
+                    for p in self.server.data_store.pipelines
+                    if p["project_id"] == project_id
+                ]
+                # Copy all jobs (we'll filter later)
+                all_jobs = [j.copy() for j in self.server.data_store.jobs]
+
+            # Apply updated_after filter if provided
+            if updated_after:
+                try:
+                    cutoff = datetime.fromisoformat(
+                        updated_after.replace("Z", "+00:00")
+                    )
+                    pipelines = [
+                        p
+                        for p in pipelines
+                        if datetime.fromisoformat(p["updated_at"]) >= cutoff
+                    ]
+                except ValueError as e:
+                    logging.warning(f"Invalid updatedAfter: '{updated_after}' - {e}")
+                    self._send_error(
+                        400, f"Invalid updatedAfter format: {updated_after}"
+                    )
+                    return
+
+            # Sort by created_at descending
+            pipelines.sort(key=lambda p: p["created_at"], reverse=True)
+
+            # Handle cursor-based pagination (decode cursor as index)
+            start_index = 0
+            if cursor:
+                try:
+                    start_index = int(cursor)
+                except ValueError:
+                    logging.warning(f"Invalid cursor: '{cursor}', using 0")
+
+            # Paginate
+            page_pipelines = pipelines[start_index : start_index + GRAPHQL_PAGE_SIZE]
+            has_next_page = start_index + GRAPHQL_PAGE_SIZE < len(pipelines)
+            end_cursor = str(start_index + GRAPHQL_PAGE_SIZE) if has_next_page else None
+
+            # Transform pipelines to GraphQL format
+            pipeline_nodes = []
+            for p in page_pipelines:
+                # Get jobs for this pipeline
+                pipeline_jobs = [j for j in all_jobs if j["pipeline"]["id"] == p["id"]]
+
+                # Transform jobs to GraphQL format
+                job_nodes = []
+                for j in pipeline_jobs[:GRAPHQL_JOBS_PER_PIPELINE]:
+                    # Transform runner to GraphQL format
+                    runner_data = None
+                    if j.get("runner"):
+                        runner_data = {
+                            "id": f"gid://gitlab/Ci::Runner/{j['runner']['id']}",
+                            "description": j["runner"]["description"],
+                        }
+
+                    job_nodes.append(
+                        {
+                            "id": f"gid://gitlab/Ci::Build/{j['id']}",
+                            "name": j["name"],
+                            "stage": {"name": j["stage"]},
+                            "status": j["status"].upper(),
+                            "createdAt": j["created_at"],
+                            "startedAt": j["started_at"],
+                            "finishedAt": j["finished_at"],
+                            "duration": j["duration"],
+                            "webPath": f"/{project['path_with_namespace']}/-/jobs/{j['id']}",
+                            "allowFailure": False,
+                            "runner": runner_data,
+                        }
+                    )
+
+                # Build pipeline user (GraphQL format)
+                user_data = None
+                if p.get("user"):
+                    user_data = {
+                        "id": f"gid://gitlab/User/{p['user']['id']}",
+                        "username": p["user"]["username"],
+                        "name": p["user"]["name"],
+                        "avatarUrl": p["user"]["avatar_url"],
+                    }
+
+                pipeline_nodes.append(
+                    {
+                        "id": f"gid://gitlab/Ci::Pipeline/{p['id']}",
+                        "iid": str(p["id"] % 1000),
+                        "status": p["status"].upper(),
+                        "source": (p.get("source") or "push").upper(),
+                        "ref": p["ref"],
+                        "sha": p["sha"],
+                        "createdAt": p["created_at"],
+                        "updatedAt": p["updated_at"],
+                        "startedAt": p["started_at"],
+                        "finishedAt": p["finished_at"],
+                        "duration": p["duration"],
+                        "user": user_data,
+                        "jobs": {
+                            "nodes": job_nodes,
+                            "pageInfo": {
+                                "hasNextPage": len(pipeline_jobs)
+                                > GRAPHQL_JOBS_PER_PIPELINE,
+                                "endCursor": str(GRAPHQL_JOBS_PER_PIPELINE)
+                                if len(pipeline_jobs) > GRAPHQL_JOBS_PER_PIPELINE
+                                else None,
+                            },
+                        },
+                    }
+                )
+
+            # Build response
+            response = {
+                "data": {
+                    "project": {
+                        "id": f"gid://gitlab/Project/{project_id}",
+                        "fullPath": project["path_with_namespace"],
+                        "pipelines": {
+                            "nodes": pipeline_nodes,
+                            "pageInfo": {
+                                "hasNextPage": has_next_page,
+                                "endCursor": end_cursor,
+                            },
+                        },
+                    }
+                }
+            }
+
+            self._send_json_response(response)
+
+        except json.JSONDecodeError:
+            self._send_error(400, "Invalid JSON in request body")
+        except Exception as e:
+            logging.error(f"GraphQL error: {type(e).__name__}: {e}", exc_info=True)
+            self._send_error(500, f"Internal server error: {str(e)}")
+
     def _handle_group_projects(self, path, page, per_page):
         """Handle /api/v4/groups/:id/projects"""
         try:
@@ -749,11 +932,14 @@ def main():
     logging.info("=" * 60)
     logging.info(f"Server running at: http://localhost:{args.port}/")
     logging.info("API endpoints:")
-    logging.info("  GET /api/v4/groups/1/projects")
-    logging.info("  GET /api/v4/projects/:id")
-    logging.info("  GET /api/v4/projects/:id/pipelines")
-    logging.info("  GET /api/v4/projects/:id/pipelines/:pipeline_id/jobs")
-    logging.info("  GET /api/v4/projects/:id/pipelines/:pipeline_id/bridges")
+    logging.info(
+        "  POST /api/graphql                                   (pipelines + jobs)"
+    )
+    logging.info("  GET  /api/v4/groups/1/projects")
+    logging.info("  GET  /api/v4/projects/:id")
+    logging.info("  GET  /api/v4/projects/:id/pipelines")
+    logging.info("  GET  /api/v4/projects/:id/pipelines/:pipeline_id/jobs")
+    logging.info("  GET  /api/v4/projects/:id/pipelines/:pipeline_id/bridges")
     logging.info("=" * 60)
     logging.info("Press Ctrl+C to stop")
     logging.info("")

@@ -651,10 +651,11 @@ class GitLabAPIClient {
             );
         }
 
-        // GraphQL query to fetch pipelines with user information
+        // GraphQL query to fetch pipelines with user information AND nested jobs
+        // This eliminates the N+1 problem by fetching jobs in the same query
         // Note: We query one project at a time to handle pagination properly
         const query = `
-            query GetPipelines($projectId: ID!, $updatedAfter: Time, $after: String) {
+            query GetPipelinesWithJobs($projectId: ID!, $updatedAfter: Time, $after: String) {
                 project(fullPath: $projectId) {
                     id
                     fullPath
@@ -663,6 +664,7 @@ class GitLabAPIClient {
                             id
                             iid
                             status
+                            source
                             ref
                             sha
                             createdAt
@@ -676,6 +678,30 @@ class GitLabAPIClient {
                                 name
                                 avatarUrl
                             }
+                            jobs(first: 100) {
+                                nodes {
+                                    id
+                                    name
+                                    stage {
+                                        name
+                                    }
+                                    status
+                                    createdAt
+                                    startedAt
+                                    finishedAt
+                                    duration
+                                    webPath
+                                    allowFailure
+                                    runner {
+                                        id
+                                        description
+                                    }
+                                }
+                                pageInfo {
+                                    hasNextPage
+                                    endCursor
+                                }
+                            }
                         }
                         pageInfo {
                             hasNextPage
@@ -688,12 +714,14 @@ class GitLabAPIClient {
 
         try {
             const allPipelines = [];
+            const allJobs = []; // Collect jobs from nested GraphQL response
 
             // Fetch pipelines for each project (with pagination per project)
             for (const project of projects) {
                 let hasNextPage = true;
                 let cursor = null;
                 let projectPipelines = [];
+                let projectJobs = [];
 
                 // Use fullPath if available, otherwise construct from path_with_namespace or use ID
                 const projectId = project.path_with_namespace || `gid://gitlab/Project/${project.id}`;
@@ -728,11 +756,12 @@ class GitLabAPIClient {
                             }
 
                             // Transform GraphQL format to REST API format
-                            projectPipelines.push({
+                            const pipelineData = {
                                 id: pipelineId,
                                 iid: pipeline.iid,
                                 project_id: projectIdNumeric,
                                 status: pipeline.status.toLowerCase(), // GraphQL uses uppercase, REST uses lowercase
+                                source: pipeline.source?.toLowerCase() || null, // Pipeline source (push, web, parent_pipeline, etc.)
                                 ref: pipeline.ref,
                                 sha: pipeline.sha,
                                 created_at: pipeline.createdAt,
@@ -746,8 +775,48 @@ class GitLabAPIClient {
                                     username: pipeline.user.username,
                                     name: pipeline.user.name,
                                     avatar_url: pipeline.user.avatarUrl
-                                } : null
-                            });
+                                } : null,
+                                // Track if jobs are incomplete (for potential secondary fetch)
+                                _jobsIncomplete: pipeline.jobs?.pageInfo?.hasNextPage || false
+                            };
+                            projectPipelines.push(pipelineData);
+
+                            // Extract jobs from nested GraphQL response
+                            if (pipeline.jobs?.nodes) {
+                                for (const job of pipeline.jobs.nodes) {
+                                    const jobId = this._extractNumericId(job.id);
+                                    if (!jobId) {
+                                        console.warn(`Failed to extract job ID from GraphQL ID: ${job.id}`);
+                                        continue;
+                                    }
+
+                                    // Transform runner from GraphQL format to REST format
+                                    let runner = null;
+                                    if (job.runner) {
+                                        const runnerId = this._extractNumericId(job.runner.id);
+                                        runner = {
+                                            id: runnerId,
+                                            description: job.runner.description
+                                        };
+                                    }
+
+                                    projectJobs.push({
+                                        id: jobId,
+                                        name: job.name,
+                                        stage: job.stage?.name || 'unknown',
+                                        status: job.status.toLowerCase(),
+                                        created_at: job.createdAt,
+                                        started_at: job.startedAt,
+                                        finished_at: job.finishedAt,
+                                        duration: job.duration,
+                                        web_url: `${this.gitlabUrl}${job.webPath}`,
+                                        allow_failure: job.allowFailure || false,
+                                        runner: runner,
+                                        pipeline_id: pipelineId,
+                                        project_id: projectIdNumeric
+                                    });
+                                }
+                            }
                         }
                     }
 
@@ -764,17 +833,19 @@ class GitLabAPIClient {
                 }
 
                 allPipelines.push(...projectPipelines);
+                allJobs.push(...projectJobs);
 
                 if (window.logger) {
-                    window.logger.debug(`Fetched ${projectPipelines.length} pipelines from project ${projectId}`);
+                    window.logger.debug(`Fetched ${projectPipelines.length} pipelines and ${projectJobs.length} jobs from project ${projectId}`);
                 }
             }
 
             if (window.logger) {
-                window.logger.info(`GraphQL fetched ${allPipelines.length} pipelines from ${projects.length} projects`);
+                window.logger.info(`GraphQL fetched ${allPipelines.length} pipelines and ${allJobs.length} jobs from ${projects.length} projects`);
             }
 
-            return allPipelines;
+            // Return both pipelines and jobs - this eliminates the need for separate fetchJobs calls
+            return { pipelines: allPipelines, jobs: allJobs };
 
         } catch (error) {
             // Re-throw with context
@@ -854,19 +925,22 @@ class GitLabAPIClient {
             );
         }
 
-        // Try GraphQL first (includes user information), fall back to REST API
+        // Try GraphQL first (includes user information AND jobs), fall back to REST API
         try {
             if (window.logger) {
-                window.logger.info('Attempting to fetch pipelines via GraphQL API (includes user data)');
+                window.logger.info('Attempting to fetch pipelines via GraphQL API (includes user data and jobs)');
             }
 
-            const pipelines = await this.fetchPipelinesGraphQL(projects, timestamp);
+            const result = await this.fetchPipelinesGraphQL(projects, timestamp);
 
             if (window.logger) {
-                window.logger.info(`GraphQL fetch successful: ${pipelines.length} pipelines with user information`);
+                window.logger.info(`GraphQL fetch successful: ${result.pipelines.length} pipelines with user information`);
             }
 
-            return pipelines;
+            // Store jobs for later retrieval via getGraphQLJobs()
+            this._graphqlJobs = result.jobs;
+
+            return result.pipelines;
 
         } catch (graphqlError) {
             // Log GraphQL failure and fall back to REST API
@@ -876,6 +950,9 @@ class GitLabAPIClient {
                     { error: graphqlError.message }
                 );
             }
+
+            // Clear any cached jobs since we're falling back to REST (which doesn't include them)
+            this._graphqlJobs = null;
 
             // Fall back to REST API (original implementation)
             const pipelinePromises = projects.map(project =>
@@ -958,6 +1035,50 @@ class GitLabAPIClient {
             );
         }
 
+        // Check if jobs were already fetched via GraphQL (nested in pipeline query)
+        // This eliminates the N+1 problem - no need for separate REST calls per pipeline
+        if (this._graphqlJobs && this._graphqlJobs.length > 0) {
+            const cachedJobs = this._graphqlJobs;
+
+            // Check if any pipelines have incomplete jobs (100+ jobs requiring pagination)
+            const incompletePipelines = pipelines.filter(p => p._jobsIncomplete);
+
+            if (incompletePipelines.length > 0) {
+                if (window.logger) {
+                    window.logger.info(`Using ${cachedJobs.length} jobs from GraphQL, fetching remaining for ${incompletePipelines.length} pipelines with 100+ jobs via REST`);
+                }
+
+                try {
+                    // Fetch remaining jobs for pipelines that exceeded GraphQL first page
+                    const additionalJobs = await this._fetchJobsREST(incompletePipelines);
+
+                    // Merge: Start with GraphQL jobs, then overwrite with REST (REST is fresher)
+                    const jobMap = new Map();
+                    cachedJobs.forEach(j => jobMap.set(j.id, j));
+                    additionalJobs.forEach(j => jobMap.set(j.id, j)); // REST overwrites GraphQL (fresher data)
+                    const mergedJobs = Array.from(jobMap.values());
+
+                    // Clear cache only after successful merge
+                    this._graphqlJobs = null;
+                    return mergedJobs;
+                } catch (restError) {
+                    // REST fetch failed - return partial GraphQL data rather than losing everything
+                    if (window.logger) {
+                        window.logger.warn(`REST fetch for incomplete pipelines failed, returning partial GraphQL data: ${restError.message}`);
+                    }
+                    this._graphqlJobs = null;
+                    return cachedJobs;
+                }
+            }
+
+            // All jobs complete - log and return cached GraphQL jobs
+            if (window.logger) {
+                window.logger.info(`Using ${cachedJobs.length} jobs from GraphQL (skipped ${pipelines.length} REST calls)`);
+            }
+            this._graphqlJobs = null;
+            return cachedJobs;
+        }
+
         // Validate pipelines have required properties
         for (const pipeline of pipelines) {
             if (!pipeline.project_id || !pipeline.id) {
@@ -967,6 +1088,16 @@ class GitLabAPIClient {
                 );
             }
         }
+
+        // No GraphQL jobs available - fetch via REST (original implementation)
+        return this._fetchJobsREST(pipelines);
+    }
+
+    /**
+     * Fetch jobs via REST API (internal method)
+     * Used when GraphQL jobs are not available or for pipelines with 100+ jobs
+     */
+    async _fetchJobsREST(pipelines) {
 
         // Fetch jobs for all pipelines in parallel
         // Each pipeline promise catches its own errors to allow partial success
