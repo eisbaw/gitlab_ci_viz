@@ -2,7 +2,7 @@
 
 A web-based GANTT chart visualization tool for GitLab CI/CD pipelines and jobs, showing activity across multiple projects and runners organized by user.
 
-![GitLab CI GANTT Visualizer](docs/screenshot.mock-run.jpg)
+![GitLab CI GANTT Visualizer](docs/screenshot.mock-run.png)
 
 ## Overview
 
