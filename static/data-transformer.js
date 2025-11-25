@@ -368,9 +368,9 @@ class Job {
     /**
      * Get effective end time for timeline
      * - Finished jobs: use finishedAt
+     * - Skipped/Manual/Canceled jobs: use createdAt + small offset (check BEFORE running!)
      * - Running jobs: use current time
      * - Pending jobs: use now + small offset for visibility
-     * - Skipped/Manual/Canceled jobs: use createdAt + small offset
      *
      * Note: Pending jobs are shown with a 2-minute bar (shorter than pipelines)
      * since jobs are typically smaller units that start quickly. This helps
@@ -382,16 +382,17 @@ class Job {
             return this.finishedAt;
         }
 
-        // Running job: show until now
-        if (this.startedAt) {
-            return new Date().toISOString();
-        }
-
         // Skipped, manual, and canceled jobs: show small bar at pipeline time
+        // IMPORTANT: Check status BEFORE startedAt - GitLab may return startedAt for skipped jobs
         if (this.status === 'skipped' || this.status === 'manual' || this.status === 'canceled' || this.status === 'cancelled') {
             const created = new Date(this.createdAt);
             const VISIBILITY_MS = 2 * 60 * 1000;
             return new Date(created.getTime() + VISIBILITY_MS).toISOString();
+        }
+
+        // Running job: show until now
+        if (this.startedAt) {
+            return new Date().toISOString();
         }
 
         // Pending job: show small bar to the right of "Now" (2 minutes)

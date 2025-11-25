@@ -184,6 +184,7 @@ class MockDataStore:
                             duration = 120
                         else:
                             status = "skipped"
+                            started_at = None  # Skipped jobs never started
                             finished_at = None
                             duration = None
                     else:  # success
